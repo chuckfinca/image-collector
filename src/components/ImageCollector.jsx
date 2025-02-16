@@ -199,43 +199,47 @@ function ImageCollector() {
   }, [isConnected]);
 
   return (
-    <div className="grid grid-cols-2 gap-8 max-w-full mx-auto p-6">
-      <div className="space-y-6">
-        <DatabaseConnection 
-          dbPath={dbPath}
-          setDbPath={setDbPath}
-          isConnected={isConnected}
-          loading={loading}
-          onConnect={initializeDatabase}
-          onDisconnect={handleDisconnect}
-          totalImages={totalImages}
-        />
+    <div className="w-full px-4">
+      <div className="max-w-7xl mx-auto flex gap-8">
+        {/* Configuration section with fixed width */}
+        <div className="w-80 flex-none space-y-6">
+          <DatabaseConnection 
+            dbPath={dbPath}
+            setDbPath={setDbPath}
+            isConnected={isConnected}
+            loading={loading}
+            onConnect={initializeDatabase}
+            onDisconnect={handleDisconnect}
+            totalImages={totalImages}
+          />
 
-        {isConnected && (
-          <>
-            <ImageUrlInput 
-              url={url}
-              setUrl={setUrl}
-              loading={loading}
-              onSubmit={handleUrlSubmit}
-            />
+          {isConnected && (
+            <>
+              <ImageUrlInput 
+                url={url}
+                setUrl={setUrl}
+                loading={loading}
+                onSubmit={handleUrlSubmit}
+              />
 
-            <DropZone 
-              isDragging={isDragging}
-              loading={loading}
-              onDragEnter={handleDragEnter}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-            />
-          </>
-        )}
+              <DropZone 
+                isDragging={isDragging}
+                loading={loading}
+                onDragEnter={handleDragEnter}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              />
+            </>
+          )}
 
-        <StatusMessage message={message} />
-      </div>
+          <StatusMessage message={message} />
+        </div>
 
-      <div>
-        <DatabaseViewer images={images} />
+        {/* Database viewer section that takes remaining space */}
+        <div className="flex-1">
+          <DatabaseViewer images={images} />
+        </div>
       </div>
     </div>
   );
