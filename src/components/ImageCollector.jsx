@@ -3,6 +3,7 @@ import DatabaseConnection from './DatabaseConnection';
 import ImageUrlInput from './ImageUrlInput';
 import DropZone from './DropZone';
 import StatusMessage from './StatusMessage';
+import DatabaseViewer from './DatabaseViewer';
 
 function ImageCollector() {
   const [url, setUrl] = useState('');
@@ -12,6 +13,7 @@ function ImageCollector() {
   const [isConnected, setIsConnected] = useState(false);
   const [totalImages, setTotalImages] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [images, setImages] = useState([]);
 
   useEffect(() => {
     if (dbPath) {
@@ -22,9 +24,22 @@ function ImageCollector() {
   useEffect(() => {
     if (isConnected) {
       const interval = setInterval(fetchStatus, 5000);
+      fetchImages();
       return () => clearInterval(interval);
     }
   }, [isConnected]);
+
+  const fetchImages = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/images');
+      if (response.ok) {
+        const data = await response.json();
+        setImages(data.images);
+      }
+    } catch (error) {
+      console.error('Error fetching images:', error);
+    }
+  };
 
   const initializeDatabase = async () => {
     if (!dbPath) {
@@ -51,6 +66,7 @@ function ImageCollector() {
         setIsConnected(true);
         setMessage('Connected to database successfully');
         fetchStatus();
+        fetchImages();
       } else {
         console.error('Server response:', data);
         setMessage(`Connection failed: ${data.detail || 'Server error'}`);
@@ -69,6 +85,7 @@ function ImageCollector() {
     setTotalImages(0);
     setMessage('');
     setDbPath('');
+    setImages([]);
   };
 
   const fetchStatus = async () => {
@@ -102,6 +119,7 @@ function ImageCollector() {
         setMessage('Image saved successfully');
         setUrl('');
         fetchStatus();
+        fetchImages();
       } else {
         setMessage('Failed to save image');
       }
@@ -172,6 +190,7 @@ function ImageCollector() {
       
       setMessage(`Upload complete: ${successCount} succeeded, ${failCount} failed`);
       fetchStatus();
+      fetchImages();
     } catch (error) {
       setMessage('Error: ' + error.message);
     } finally {
@@ -180,39 +199,45 @@ function ImageCollector() {
   }, [isConnected]);
 
   return (
-    <>
-      <DatabaseConnection 
-        dbPath={dbPath}
-        setDbPath={setDbPath}
-        isConnected={isConnected}
-        loading={loading}
-        onConnect={initializeDatabase}
-        onDisconnect={handleDisconnect}
-        totalImages={totalImages}
-      />
+    <div className="grid grid-cols-2 gap-8 max-w-full mx-auto p-6">
+      <div className="space-y-6">
+        <DatabaseConnection 
+          dbPath={dbPath}
+          setDbPath={setDbPath}
+          isConnected={isConnected}
+          loading={loading}
+          onConnect={initializeDatabase}
+          onDisconnect={handleDisconnect}
+          totalImages={totalImages}
+        />
 
-      {isConnected && (
-        <>
-          <ImageUrlInput 
-            url={url}
-            setUrl={setUrl}
-            loading={loading}
-            onSubmit={handleUrlSubmit}
-          />
+        {isConnected && (
+          <>
+            <ImageUrlInput 
+              url={url}
+              setUrl={setUrl}
+              loading={loading}
+              onSubmit={handleUrlSubmit}
+            />
 
-          <DropZone 
-            isDragging={isDragging}
-            loading={loading}
-            onDragEnter={handleDragEnter}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          />
-        </>
-      )}
+            <DropZone 
+              isDragging={isDragging}
+              loading={loading}
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            />
+          </>
+        )}
 
-      <StatusMessage message={message} />
-    </>
+        <StatusMessage message={message} />
+      </div>
+
+      <div>
+        <DatabaseViewer images={images} />
+      </div>
+    </div>
   );
 }
 

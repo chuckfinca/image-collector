@@ -116,3 +116,24 @@ async def get_status():
     with sqlite3.connect(image_db.db_path) as conn:
         count = conn.execute("SELECT COUNT(*) FROM images").fetchone()[0]
     return {"total_images": count}
+
+@app.get("/images")
+async def get_images():
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    with sqlite3.connect(image_db.db_path) as conn:
+        cursor = conn.execute("""
+            SELECT filename, date_added, source_url
+            FROM images
+            ORDER BY date_added DESC
+        """)
+        images = [
+            {
+                "filename": row[0],
+                "date_added": row[1],
+                "source_url": row[2]
+            }
+            for row in cursor.fetchall()
+        ]
+    return {"images": images}
