@@ -11,6 +11,7 @@ from PIL import Image
 from io import BytesIO
 import base64
 
+# Create FastAPI app instance
 app = FastAPI()
 
 # Add CORS middleware
@@ -124,16 +125,36 @@ async def get_images():
     
     with sqlite3.connect(image_db.db_path) as conn:
         cursor = conn.execute("""
-            SELECT filename, date_added, source_url
+            SELECT id, filename, date_added, source_url, hash, image_data
             FROM images
             ORDER BY date_added DESC
         """)
-        images = [
-            {
-                "filename": row[0],
-                "date_added": row[1],
-                "source_url": row[2]
-            }
-            for row in cursor.fetchall()
-        ]
+        images = []
+        for row in cursor.fetchall():
+            image_data = row[5]
+            # Create a data URI for the thumbnail
+            if image_data:
+                try:
+                    # Open the image and create a thumbnail
+                    img = Image.open(BytesIO(image_data))
+                    img.thumbnail((200, 200))  # Resize for thumbnail
+                    # Save the thumbnail to a bytes buffer
+                    thumb_buffer = BytesIO()
+                    img.save(thumb_buffer, format=img.format)
+                    # Convert to base64
+                    thumbnail = f"data:image/{img.format.lower()};base64,{base64.b64encode(thumb_buffer.getvalue()).decode()}"
+                except Exception as e:
+                    print(f"Error creating thumbnail: {e}")
+                    thumbnail = None
+            else:
+                thumbnail = None
+
+            images.append({
+                "id": row[0],
+                "filename": row[1],
+                "date_added": row[2],
+                "source_url": row[3],
+                "hash": row[4] or "",
+                "thumbnail": thumbnail
+            })
     return {"images": images}
