@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 function DatabaseViewer({ images, onUpdateImage }) {
   const [editMode, setEditMode] = useState(false);
-  const [editingData, setEditingData] = useState({});
+  const [editableImages, setEditableImages] = useState([]);
+  const [validationState, setValidationState] = useState({});
 
   if (!images || images.length === 0) {
     return (
@@ -12,50 +13,111 @@ function DatabaseViewer({ images, onUpdateImage }) {
     );
   }
 
-  const handleEditToggle = () => {
-    if (editMode) {
-      // Save all pending changes when exiting edit mode
-      Object.entries(editingData).forEach(([imageId, data]) => {
-        // Simple validation - remove empty entries from arrays
-        const cleanData = {
-          ...data,
-          email_addresses: data.email_addresses?.filter(email => email.trim()) || [],
-          phone_numbers: data.phone_numbers?.filter(phone => phone.trim()) || [],
-          url_addresses: data.url_addresses?.filter(url => url.trim()) || []
-        };
-        onUpdateImage(parseInt(imageId), cleanData);
-      });
-      setEditingData({});
+  // Validate a single field
+  const validateField = (value, type) => {
+    if (!value) return true; // Empty values are considered valid
+
+    switch (type) {
+      case 'email':
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+      case 'url':
+        return /^https?:\/\/[^\s]+$/.test(value);
+      default:
+        return true;
     }
-    setEditMode(!editMode);
   };
 
-  const handleFieldChange = (imageId, field, value) => {
-    setEditingData(prev => ({
+  // Validate an array of values
+  const validateArray = (values, type) => {
+    if (!values?.length) return true;
+    return values.every(value => !value.trim() || validateField(value.trim(), type));
+  };
+
+  // Update validation state for a specific field
+  const updateValidation = (imageId, field, valid) => {
+    setValidationState(prev => ({
       ...prev,
       [imageId]: {
-        ...(prev[imageId] || {}),
-        [field]: value
+        ...prev[imageId],
+        [field]: valid
       }
     }));
   };
 
-  // Simple EditableField component
-  const EditableField = ({ imageId, field, value }) => {
-    const currentValue = editingData[imageId]?.[field] ?? value;
-    
-    if (!editMode) {
-      return <div className="text-gray-300">{currentValue || "—"}</div>;
+  const handleEditToggle = () => {
+    if (editMode) {
+      // Save all changes regardless of validation state
+      editableImages.forEach(image => {
+        onUpdateImage(image.id, {
+          given_name: image.given_name,
+          family_name: image.family_name,
+          job_title: image.job_title,
+          organization_name: image.organization_name,
+          phone_numbers: image.phone_numbers?.filter(p => p.trim()),
+          email_addresses: image.email_addresses?.filter(e => e.trim()),
+          url_addresses: image.url_addresses?.filter(u => u.trim())
+        });
+      });
+      setEditMode(false);
+    } else {
+      // Enter edit mode
+      setEditableImages(JSON.parse(JSON.stringify(images)));
+      setValidationState({});
+      setEditMode(true);
     }
+  };
 
-    return (
-      <input
-        type="text"
-        value={currentValue || ""}
-        onChange={(e) => handleFieldChange(imageId, field, e.target.value)}
-        className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200"
-      />
+  const handleInputChange = (imageId, field, value) => {
+    setEditableImages(prev => 
+      prev.map(img => 
+        img.id === imageId 
+          ? { ...img, [field]: value }
+          : img
+      )
     );
+  };
+
+  const handleArrayInputChange = (imageId, field, value, validationType) => {
+    const arrayValue = value.split('\n');
+    
+    // Update the editable data
+    setEditableImages(prev => 
+      prev.map(img => 
+        img.id === imageId 
+          ? { ...img, [field]: arrayValue }
+          : img
+      )
+    );
+
+    // Validate immediately
+    const isValid = validateArray(arrayValue, validationType);
+    updateValidation(imageId, field, isValid);
+  };
+
+  const getValidationMessage = (imageId, field) => {
+    if (!editMode || validationState[imageId]?.[field] !== false) return null;
+    
+    switch (field) {
+      case 'email_addresses':
+        return 'One or more invalid email addresses';
+      case 'url_addresses':
+        return 'One or more invalid URLs';
+      default:
+        return 'Invalid input';
+    }
+  };
+
+  const getFieldClassName = (imageId, field) => {
+    const baseClasses = "w-full px-2 py-1 bg-gray-700 border rounded disabled:opacity-75 disabled:cursor-not-allowed";
+    
+    if (!editMode) return `${baseClasses} border-gray-600`;
+    
+    const isInvalid = validationState[imageId]?.[field] === false;
+    return `${baseClasses} ${
+      isInvalid 
+        ? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
+        : 'border-gray-600 focus:border-blue-500 focus:ring-blue-500'
+    }`;
   };
 
   return (
@@ -70,132 +132,141 @@ function DatabaseViewer({ images, onUpdateImage }) {
               : 'bg-blue-600 hover:bg-blue-700 text-white'
           }`}
         >
-          {editMode ? 'Save Changes' : 'Edit Mode'}
+          {editMode ? 'Save Changes' : 'Edit All'}
         </button>
       </div>
 
-      <div className="overflow-x-auto border border-gray-700 rounded-lg shadow-sm">
+      <div className="overflow-x-auto border border-gray-700 rounded-lg">
         <table className="w-full border-collapse">
-          <thead className="bg-gray-800 sticky top-0">
+          <thead className="bg-gray-800">
             <tr>
-              <th className="p-4 text-left font-medium text-gray-200">Image</th>
-              <th className="p-4 text-left font-medium text-gray-200">Name Info</th>
-              <th className="p-4 text-left font-medium text-gray-200">Work Info</th>
-              <th className="p-4 text-left font-medium text-gray-200">Contact Info</th>
-              <th className="p-4 text-left font-medium text-gray-200">Online Presence</th>
+              <th className="p-4 text-left text-gray-200">Image</th>
+              <th className="p-4 text-left text-gray-200">Name Info</th>
+              <th className="p-4 text-left text-gray-200">Work Info</th>
+              <th className="p-4 text-left text-gray-200">Contact Info</th>
+              <th className="p-4 text-left text-gray-200">Online Presence</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-700">
-            {images.map((image) => (
+            {(editMode ? editableImages : images).map((image) => (
               <tr key={image.id} className="hover:bg-gray-800/50">
                 {/* Image Column */}
-                <td className="p-4 align-top">
-                  <div className="space-y-2">
-                    <div className="w-32 h-32 relative bg-gray-800 rounded flex items-center justify-center">
-                      {image.thumbnail ? (
-                        <img
-                          src={image.thumbnail}
-                          alt="Business card"
-                          className="object-contain w-full h-full rounded"
-                        />
-                      ) : (
-                        <div className="text-gray-500">No image</div>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      Added: {new Date(image.date_added).toLocaleString()}
-                    </div>
+                <td className="p-4">
+                  <div className="w-32 h-32 bg-gray-800 rounded flex items-center justify-center">
+                    {image.thumbnail ? (
+                      <img
+                        src={image.thumbnail}
+                        alt="Business card"
+                        className="object-contain w-full h-full rounded"
+                      />
+                    ) : (
+                      <div className="text-gray-500">No image</div>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-2">
+                    Added: {new Date(image.date_added).toLocaleString()}
                   </div>
                 </td>
 
                 {/* Name Information */}
-                <td className="p-4 align-top">
-                  <div className="space-y-2 text-sm">
+                <td className="p-4">
+                  <div className="space-y-2">
                     <div>
-                      <div className="font-medium text-gray-300">Name</div>
-                      <EditableField imageId={image.id} field="given_name" value={image.given_name} />
+                      <div className="font-medium text-gray-300">First Name</div>
+                      <input
+                        type="text"
+                        value={image.given_name || ''}
+                        onChange={(e) => handleInputChange(image.id, 'given_name', e.target.value)}
+                        disabled={!editMode}
+                        className={getFieldClassName(image.id, 'given_name')}
+                      />
                     </div>
                     <div>
-                      <div className="font-medium text-gray-300">Family Name</div>
-                      <EditableField imageId={image.id} field="family_name" value={image.family_name} />
+                      <div className="font-medium text-gray-300">Last Name</div>
+                      <input
+                        type="text"
+                        value={image.family_name || ''}
+                        onChange={(e) => handleInputChange(image.id, 'family_name', e.target.value)}
+                        disabled={!editMode}
+                        className={getFieldClassName(image.id, 'family_name')}
+                      />
                     </div>
                   </div>
                 </td>
 
                 {/* Work Information */}
-                <td className="p-4 align-top">
-                  <div className="space-y-2 text-sm">
+                <td className="p-4">
+                  <div className="space-y-2">
                     <div>
                       <div className="font-medium text-gray-300">Job Title</div>
-                      <EditableField imageId={image.id} field="job_title" value={image.job_title} />
+                      <input
+                        type="text"
+                        value={image.job_title || ''}
+                        onChange={(e) => handleInputChange(image.id, 'job_title', e.target.value)}
+                        disabled={!editMode}
+                        className={getFieldClassName(image.id, 'job_title')}
+                      />
                     </div>
                     <div>
                       <div className="font-medium text-gray-300">Organization</div>
-                      <EditableField imageId={image.id} field="organization_name" value={image.organization_name} />
+                      <input
+                        type="text"
+                        value={image.organization_name || ''}
+                        onChange={(e) => handleInputChange(image.id, 'organization_name', e.target.value)}
+                        disabled={!editMode}
+                        className={getFieldClassName(image.id, 'organization_name')}
+                      />
                     </div>
                   </div>
                 </td>
 
                 {/* Contact Information */}
-                <td className="p-4 align-top">
-                  <div className="space-y-4 text-sm">
+                <td className="p-4">
+                  <div className="space-y-4">
                     <div>
                       <div className="font-medium text-gray-300 mb-1">Phone Numbers</div>
-                      {editMode ? (
-                        <textarea
-                          value={(image.phone_numbers || []).join('\n')}
-                          onChange={(e) => handleFieldChange(image.id, 'phone_numbers', e.target.value.split('\n'))}
-                          className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200"
-                          rows={3}
-                        />
-                      ) : (
-                        image.phone_numbers?.map((phone, idx) => (
-                          <div key={idx} className="text-gray-300">{phone}</div>
-                        )) || <div className="text-gray-500">—</div>
-                      )}
+                      <textarea
+                        value={(image.phone_numbers || []).join('\n')}
+                        onChange={(e) => handleArrayInputChange(image.id, 'phone_numbers', e.target.value)}
+                        disabled={!editMode}
+                        className={getFieldClassName(image.id, 'phone_numbers')}
+                        rows={3}
+                      />
                     </div>
-                    
                     <div>
                       <div className="font-medium text-gray-300 mb-1">Email Addresses</div>
-                      {editMode ? (
-                        <textarea
-                          value={(image.email_addresses || []).join('\n')}
-                          onChange={(e) => handleFieldChange(image.id, 'email_addresses', e.target.value.split('\n'))}
-                          className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200"
-                          rows={3}
-                        />
-                      ) : (
-                        image.email_addresses?.map((email, idx) => (
-                          <div key={idx} className="text-gray-300">{email}</div>
-                        )) || <div className="text-gray-500">—</div>
+                      <textarea
+                        value={(image.email_addresses || []).join('\n')}
+                        onChange={(e) => handleArrayInputChange(image.id, 'email_addresses', e.target.value, 'email')}
+                        disabled={!editMode}
+                        className={getFieldClassName(image.id, 'email_addresses')}
+                        rows={3}
+                      />
+                      {editMode && (
+                        <div className="text-sm text-red-400 mt-1">
+                          {getValidationMessage(image.id, 'email_addresses')}
+                        </div>
                       )}
                     </div>
                   </div>
                 </td>
 
                 {/* Online Presence */}
-                <td className="p-4 align-top">
-                  <div className="space-y-4 text-sm">
-                    <div>
-                      <div className="font-medium text-gray-300 mb-1">URLs</div>
-                      {editMode ? (
-                        <textarea
-                          value={(image.url_addresses || []).join('\n')}
-                          onChange={(e) => handleFieldChange(image.id, 'url_addresses', e.target.value.split('\n'))}
-                          className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200"
-                          rows={3}
-                        />
-                      ) : (
-                        image.url_addresses?.map((url, idx) => (
-                          <div key={idx}>
-                            <a href={url} target="_blank" rel="noopener noreferrer" 
-                               className="text-blue-400 hover:text-blue-300">
-                              {url}
-                            </a>
-                          </div>
-                        )) || <div className="text-gray-500">—</div>
-                      )}
-                    </div>
+                <td className="p-4">
+                  <div>
+                    <div className="font-medium text-gray-300 mb-1">URLs</div>
+                    <textarea
+                      value={(image.url_addresses || []).join('\n')}
+                      onChange={(e) => handleArrayInputChange(image.id, 'url_addresses', e.target.value, 'url')}
+                      disabled={!editMode}
+                      className={getFieldClassName(image.id, 'url_addresses')}
+                      rows={3}
+                    />
+                    {editMode && (
+                      <div className="text-sm text-red-400 mt-1">
+                        {getValidationMessage(image.id, 'url_addresses')}
+                      </div>
+                    )}
                   </div>
                 </td>
               </tr>
