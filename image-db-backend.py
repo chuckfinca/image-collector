@@ -10,6 +10,7 @@ import hashlib
 from PIL import Image
 from io import BytesIO
 import base64
+from typing import List, Optional
 
 # Create FastAPI app instance
 app = FastAPI()
@@ -23,6 +24,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class PostalAddress(BaseModel):
+    street: Optional[str] = None
+    sub_locality: Optional[str] = None
+    city: Optional[str] = None
+    sub_administrative_area: Optional[str] = None
+    state: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = None
+    iso_country_code: Optional[str] = None
+
+class SocialProfile(BaseModel):
+    service: str
+    url: Optional[str] = None
+    username: str
+
 class DbPath(BaseModel):
     db_path: str
 
@@ -32,43 +48,166 @@ class ImageDatabase:
         self.init_db()
 
     def init_db(self):
-        # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(os.path.abspath(self.db_path)), exist_ok=True)
         
         with sqlite3.connect(self.db_path) as conn:
+            # Create main images table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS images (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    filename TEXT NOT NULL,
-                    source_url TEXT,
+                    image_data BLOB NOT NULL,
                     hash TEXT UNIQUE,
                     date_added TIMESTAMP,
-                    image_data BLOB NOT NULL
+                    
+                    -- Name Information
+                    name_prefix TEXT,
+                    given_name TEXT,
+                    middle_name TEXT,
+                    family_name TEXT,
+                    name_suffix TEXT,
+                    
+                    -- Work Information
+                    job_title TEXT,
+                    department TEXT,
+                    organization_name TEXT,
+                    
+                    -- Notes
+                    notes TEXT
+                )
+            """)
+            
+            # Create related tables for one-to-many relationships
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS phone_numbers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    image_id INTEGER,
+                    phone_number TEXT,
+                    FOREIGN KEY(image_id) REFERENCES images(id)
+                )
+            """)
+            
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS email_addresses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    image_id INTEGER,
+                    email_address TEXT,
+                    FOREIGN KEY(image_id) REFERENCES images(id)
+                )
+            """)
+            
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS postal_addresses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    image_id INTEGER,
+                    street TEXT,
+                    sub_locality TEXT,
+                    city TEXT,
+                    sub_administrative_area TEXT,
+                    state TEXT,
+                    postal_code TEXT,
+                    country TEXT,
+                    iso_country_code TEXT,
+                    FOREIGN KEY(image_id) REFERENCES images(id)
+                )
+            """)
+            
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS url_addresses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    image_id INTEGER,
+                    url TEXT,
+                    FOREIGN KEY(image_id) REFERENCES images(id)
+                )
+            """)
+            
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS social_profiles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    image_id INTEGER,
+                    service TEXT,
+                    url TEXT,
+                    username TEXT,
+                    FOREIGN KEY(image_id) REFERENCES images(id)
                 )
             """)
 
-    async def save_image(self, image_data: bytes, source_url: str = None) -> bool:
-        # Generate hash of image data
+    async def save_image(self, image_data: bytes, metadata: dict = None) -> bool:
+        if metadata is None:
+            metadata = {}
+            
         image_hash = hashlib.sha256(image_data).hexdigest()
         
         try:
-            # Validate image
             img = Image.open(BytesIO(image_data))
             img.verify()
             
-            # Create filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"image_{timestamp}.{img.format.lower()}"
-            
             with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
                 try:
-                    conn.execute("""
-                        INSERT INTO images (filename, source_url, hash, date_added, image_data)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (filename, source_url, image_hash, datetime.now(), image_data))
+                    # Insert main image record
+                    cursor.execute("""
+                        INSERT INTO images (
+                            image_data, hash, date_added,
+                            name_prefix, given_name, middle_name, family_name, name_suffix,
+                            job_title, department, organization_name,
+                            notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        image_data, image_hash, datetime.now(),
+                        metadata.get('name_prefix'), metadata.get('given_name'),
+                        metadata.get('middle_name'), metadata.get('family_name'),
+                        metadata.get('name_suffix'), metadata.get('job_title'),
+                        metadata.get('department'), metadata.get('organization_name'),
+                        metadata.get('notes')
+                    ))
+                    
+                    image_id = cursor.lastrowid
+                    
+                    # Insert related records
+                    for phone in metadata.get('phone_numbers', []):
+                        cursor.execute(
+                            "INSERT INTO phone_numbers (image_id, phone_number) VALUES (?, ?)",
+                            (image_id, phone)
+                        )
+                    
+                    for email in metadata.get('email_addresses', []):
+                        cursor.execute(
+                            "INSERT INTO email_addresses (image_id, email_address) VALUES (?, ?)",
+                            (image_id, email)
+                        )
+                    
+                    for addr in metadata.get('postal_addresses', []):
+                        cursor.execute("""
+                            INSERT INTO postal_addresses (
+                                image_id, street, sub_locality, city,
+                                sub_administrative_area, state, postal_code,
+                                country, iso_country_code
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            image_id, addr.get('street'), addr.get('sub_locality'),
+                            addr.get('city'), addr.get('sub_administrative_area'),
+                            addr.get('state'), addr.get('postal_code'),
+                            addr.get('country'), addr.get('iso_country_code')
+                        ))
+                    
+                    for url in metadata.get('url_addresses', []):
+                        cursor.execute(
+                            "INSERT INTO url_addresses (image_id, url) VALUES (?, ?)",
+                            (image_id, url)
+                        )
+                    
+                    for profile in metadata.get('social_profiles', []):
+                        cursor.execute("""
+                            INSERT INTO social_profiles (image_id, service, url, username)
+                            VALUES (?, ?, ?, ?)
+                        """, (
+                            image_id, profile.get('service'),
+                            profile.get('url'), profile.get('username')
+                        ))
+                    
                     return True
                 except sqlite3.IntegrityError:
-                    # Image already exists (hash collision)
                     return False
                 
         except Exception as e:
@@ -105,7 +244,7 @@ async def upload_url(url: str = Form(...)):
         async with session.get(url) as response:
             if response.status == 200:
                 image_data = await response.read()
-                success = await image_db.save_image(image_data, url)
+                success = await image_db.save_image(image_data, {'url_addresses': [url]})
                 return {"success": success}
             return {"success": False, "error": "Failed to fetch image"}
 
@@ -124,24 +263,28 @@ async def get_images():
         raise HTTPException(status_code=400, detail="Database not initialized")
     
     with sqlite3.connect(image_db.db_path) as conn:
-        cursor = conn.execute("""
-            SELECT id, filename, date_added, source_url, hash, image_data
-            FROM images
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Get main image data
+        cursor.execute("""
+            SELECT * FROM images 
             ORDER BY date_added DESC
         """)
+        rows = cursor.fetchall()
+        
         images = []
-        for row in cursor.fetchall():
-            image_data = row[5]
-            # Create a data URI for the thumbnail
+        for row in rows:
+            image_data = row['image_data']
+            image_id = row['id']
+            
+            # Create thumbnail
             if image_data:
                 try:
-                    # Open the image and create a thumbnail
                     img = Image.open(BytesIO(image_data))
-                    img.thumbnail((200, 200))  # Resize for thumbnail
-                    # Save the thumbnail to a bytes buffer
+                    img.thumbnail((200, 200))
                     thumb_buffer = BytesIO()
                     img.save(thumb_buffer, format=img.format)
-                    # Convert to base64
                     thumbnail = f"data:image/{img.format.lower()};base64,{base64.b64encode(thumb_buffer.getvalue()).decode()}"
                 except Exception as e:
                     print(f"Error creating thumbnail: {e}")
@@ -149,12 +292,38 @@ async def get_images():
             else:
                 thumbnail = None
 
-            images.append({
-                "id": row[0],
-                "filename": row[1],
-                "date_added": row[2],
-                "source_url": row[3],
-                "hash": row[4] or "",
-                "thumbnail": thumbnail
+            # Get phone numbers
+            cursor.execute("SELECT phone_number FROM phone_numbers WHERE image_id = ?", (image_id,))
+            phone_numbers = [r[0] for r in cursor.fetchall()]
+            
+            # Get email addresses
+            cursor.execute("SELECT email_address FROM email_addresses WHERE image_id = ?", (image_id,))
+            email_addresses = [r[0] for r in cursor.fetchall()]
+            
+            # Get postal addresses
+            cursor.execute("SELECT * FROM postal_addresses WHERE image_id = ?", (image_id,))
+            postal_addresses = [dict(r) for r in cursor.fetchall()]
+            
+            # Get URLs
+            cursor.execute("SELECT url FROM url_addresses WHERE image_id = ?", (image_id,))
+            url_addresses = [r[0] for r in cursor.fetchall()]
+            
+            # Get social profiles
+            cursor.execute("SELECT service, url, username FROM social_profiles WHERE image_id = ?", (image_id,))
+            social_profiles = [dict(zip(['service', 'url', 'username'], r)) for r in cursor.fetchall()]
+
+            # Combine all data
+            image_dict = dict(row)
+            del image_dict['image_data']  # Remove binary data from response
+            image_dict.update({
+                'thumbnail': thumbnail,
+                'phone_numbers': phone_numbers,
+                'email_addresses': email_addresses,
+                'postal_addresses': postal_addresses,
+                'url_addresses': url_addresses,
+                'social_profiles': social_profiles
             })
+            
+            images.append(image_dict)
+            
     return {"images": images}

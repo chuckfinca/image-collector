@@ -15,31 +15,59 @@ function ImageCollector() {
   const [isDragging, setIsDragging] = useState(false);
   const [images, setImages] = useState([]);
 
-  useEffect(() => {
-    if (dbPath) {
-      initializeDatabase();
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isConnected) {
-      const interval = setInterval(fetchStatus, 5000);
-      fetchImages();
-      return () => clearInterval(interval);
+  const fetchStatus = useCallback(async () => {
+    if (!isConnected) return;
+    
+    try {
+      const response = await fetch('http://localhost:8000/status');
+      if (response.ok) {
+        const data = await response.json();
+        setTotalImages(data.total_images);
+      } else {
+        console.error('Failed to fetch status:', await response.text());
+      }
+    } catch (error) {
+      console.error('Error fetching status:', error);
     }
   }, [isConnected]);
 
-  const fetchImages = async () => {
+  const fetchImages = useCallback(async () => {
+    if (!isConnected) return;
+    
     try {
       const response = await fetch('http://localhost:8000/images');
       if (response.ok) {
         const data = await response.json();
         setImages(data.images);
+      } else {
+        console.error('Failed to fetch images:', await response.text());
       }
     } catch (error) {
       console.error('Error fetching images:', error);
     }
-  };
+  }, [isConnected]);
+
+  useEffect(() => {
+    if (dbPath && !isConnected) {
+      initializeDatabase();
+    }
+  }, [dbPath]);
+
+  useEffect(() => {
+    if (isConnected) {
+      // Initial fetch
+      fetchStatus();
+      fetchImages();
+      
+      // Set up polling
+      const interval = setInterval(() => {
+        fetchStatus();
+        fetchImages();
+      }, 5000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [isConnected, fetchStatus, fetchImages]);
 
   const initializeDatabase = async () => {
     if (!dbPath) {
@@ -59,21 +87,24 @@ function ImageCollector() {
         body: JSON.stringify({ db_path: cleanPath })
       });
       
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to initialize database');
+      }
+      
       const data = await response.json();
       
-      if (response.ok) {
+      if (data.success) {
         localStorage.setItem('imageDatabasePath', cleanPath);
         setIsConnected(true);
         setMessage('Connected to database successfully');
-        fetchStatus();
-        fetchImages();
       } else {
-        console.error('Server response:', data);
-        setMessage(`Connection failed: ${data.detail || 'Server error'}`);
+        setMessage('Failed to connect to database');
       }
     } catch (error) {
       console.error('Connection error:', error);
       setMessage(`Connection error: ${error.message}`);
+      setIsConnected(false);
     } finally {
       setLoading(false);
     }
@@ -86,18 +117,6 @@ function ImageCollector() {
     setMessage('');
     setDbPath('');
     setImages([]);
-  };
-
-  const fetchStatus = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/status');
-      if (response.ok) {
-        const data = await response.json();
-        setTotalImages(data.total_images);
-      }
-    } catch (error) {
-      console.error('Error fetching status:', error);
-    }
   };
 
   const handleUrlSubmit = async (e) => {
@@ -114,14 +133,17 @@ function ImageCollector() {
         body: formData,
       });
 
+      if (!response.ok) {
+        throw new Error('Failed to upload image from URL');
+      }
+
       const result = await response.json();
       if (result.success) {
         setMessage('Image saved successfully');
         setUrl('');
-        fetchStatus();
-        fetchImages();
+        await Promise.all([fetchStatus(), fetchImages()]);
       } else {
-        setMessage('Failed to save image');
+        setMessage(result.error || 'Failed to save image');
       }
     } catch (error) {
       setMessage('Error: ' + error.message);
@@ -180,6 +202,11 @@ function ImageCollector() {
           body: formData,
         });
         
+        if (!response.ok) {
+          failCount++;
+          continue;
+        }
+        
         const result = await response.json();
         if (result.success) {
           successCount++;
@@ -189,14 +216,13 @@ function ImageCollector() {
       }
       
       setMessage(`Upload complete: ${successCount} succeeded, ${failCount} failed`);
-      fetchStatus();
-      fetchImages();
+      await Promise.all([fetchStatus(), fetchImages()]);
     } catch (error) {
       setMessage('Error: ' + error.message);
     } finally {
       setLoading(false);
     }
-  }, [isConnected]);
+  }, [isConnected, fetchStatus, fetchImages]);
 
   return (
     <div className="w-full px-4">
