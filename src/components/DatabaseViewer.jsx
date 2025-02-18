@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 function DatabaseViewer({ images, onUpdateImage }) {
   const [editMode, setEditMode] = useState(false);
@@ -13,10 +13,9 @@ function DatabaseViewer({ images, onUpdateImage }) {
     );
   }
 
-  // Validate a single field
+  // Validation functions remain the same
   const validateField = (value, type) => {
-    if (!value) return true; // Empty values are considered valid
-
+    if (!value) return true;
     switch (type) {
       case 'email':
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -27,13 +26,11 @@ function DatabaseViewer({ images, onUpdateImage }) {
     }
   };
 
-  // Validate an array of values
   const validateArray = (values, type) => {
     if (!values?.length) return true;
     return values.every(value => !value.trim() || validateField(value.trim(), type));
   };
 
-  // Update validation state for a specific field
   const updateValidation = (imageId, field, valid) => {
     setValidationState(prev => ({
       ...prev,
@@ -46,12 +43,15 @@ function DatabaseViewer({ images, onUpdateImage }) {
 
   const handleEditToggle = () => {
     if (editMode) {
-      // Save all changes regardless of validation state
       editableImages.forEach(image => {
         onUpdateImage(image.id, {
+          name_prefix: image.name_prefix,
           given_name: image.given_name,
+          middle_name: image.middle_name,
           family_name: image.family_name,
+          name_suffix: image.name_suffix,
           job_title: image.job_title,
+          department: image.department,
           organization_name: image.organization_name,
           phone_numbers: image.phone_numbers?.filter(p => p.trim()),
           email_addresses: image.email_addresses?.filter(e => e.trim()),
@@ -60,7 +60,6 @@ function DatabaseViewer({ images, onUpdateImage }) {
       });
       setEditMode(false);
     } else {
-      // Enter edit mode
       setEditableImages(JSON.parse(JSON.stringify(images)));
       setValidationState({});
       setEditMode(true);
@@ -79,8 +78,6 @@ function DatabaseViewer({ images, onUpdateImage }) {
 
   const handleArrayInputChange = (imageId, field, value, validationType) => {
     const arrayValue = value.split('\n');
-    
-    // Update the editable data
     setEditableImages(prev => 
       prev.map(img => 
         img.id === imageId 
@@ -88,15 +85,12 @@ function DatabaseViewer({ images, onUpdateImage }) {
           : img
       )
     );
-
-    // Validate immediately
     const isValid = validateArray(arrayValue, validationType);
     updateValidation(imageId, field, isValid);
   };
 
   const getValidationMessage = (imageId, field) => {
     if (!editMode || validationState[imageId]?.[field] !== false) return null;
-    
     switch (field) {
       case 'email_addresses':
         return 'One or more invalid email addresses';
@@ -109,9 +103,7 @@ function DatabaseViewer({ images, onUpdateImage }) {
 
   const getFieldClassName = (imageId, field) => {
     const baseClasses = "w-full px-2 py-1 bg-gray-700 border rounded disabled:opacity-75 disabled:cursor-not-allowed";
-    
     if (!editMode) return `${baseClasses} border-gray-600`;
-    
     const isInvalid = validationState[imageId]?.[field] === false;
     return `${baseClasses} ${
       isInvalid 
@@ -140,18 +132,17 @@ function DatabaseViewer({ images, onUpdateImage }) {
         <table className="w-full border-collapse">
           <thead className="bg-gray-800">
             <tr>
-              <th className="p-4 text-left text-gray-200">Image</th>
-              <th className="p-4 text-left text-gray-200">Name Info</th>
-              <th className="p-4 text-left text-gray-200">Work Info</th>
-              <th className="p-4 text-left text-gray-200">Contact Info</th>
-              <th className="p-4 text-left text-gray-200">Online Presence</th>
+              <th className="p-4 text-left text-gray-200 align-top">Image</th>
+              <th className="p-4 text-left text-gray-200 align-top">Name Info</th>
+              <th className="p-4 text-left text-gray-200 align-top">Work Info</th>
+              <th className="p-4 text-left text-gray-200 align-top">Contact Info</th>
+              <th className="p-4 text-left text-gray-200 align-top">Online Presence</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-700">
             {(editMode ? editableImages : images).map((image) => (
               <tr key={image.id} className="hover:bg-gray-800/50">
-                {/* Image Column */}
-                <td className="p-4">
+                <td className="p-4 align-top">
                   <div className="w-32 h-32 bg-gray-800 rounded flex items-center justify-center">
                     {image.thumbnail ? (
                       <img
@@ -168,11 +159,20 @@ function DatabaseViewer({ images, onUpdateImage }) {
                   </div>
                 </td>
 
-                {/* Name Information */}
-                <td className="p-4">
+                <td className="p-4 align-top">
                   <div className="space-y-2">
                     <div>
-                      <div className="font-medium text-gray-300">First Name</div>
+                      <label className="block font-medium text-gray-300 mb-1">Prefix</label>
+                      <input
+                        type="text"
+                        value={image.name_prefix || ''}
+                        onChange={(e) => handleInputChange(image.id, 'name_prefix', e.target.value)}
+                        disabled={!editMode}
+                        className={getFieldClassName(image.id, 'name_prefix')}
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium text-gray-300 mb-1">First Name</label>
                       <input
                         type="text"
                         value={image.given_name || ''}
@@ -182,7 +182,17 @@ function DatabaseViewer({ images, onUpdateImage }) {
                       />
                     </div>
                     <div>
-                      <div className="font-medium text-gray-300">Last Name</div>
+                      <label className="block font-medium text-gray-300 mb-1">Middle Name</label>
+                      <input
+                        type="text"
+                        value={image.middle_name || ''}
+                        onChange={(e) => handleInputChange(image.id, 'middle_name', e.target.value)}
+                        disabled={!editMode}
+                        className={getFieldClassName(image.id, 'middle_name')}
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium text-gray-300 mb-1">Last Name</label>
                       <input
                         type="text"
                         value={image.family_name || ''}
@@ -191,14 +201,23 @@ function DatabaseViewer({ images, onUpdateImage }) {
                         className={getFieldClassName(image.id, 'family_name')}
                       />
                     </div>
+                    <div>
+                      <label className="block font-medium text-gray-300 mb-1">Suffix</label>
+                      <input
+                        type="text"
+                        value={image.name_suffix || ''}
+                        onChange={(e) => handleInputChange(image.id, 'name_suffix', e.target.value)}
+                        disabled={!editMode}
+                        className={getFieldClassName(image.id, 'name_suffix')}
+                      />
+                    </div>
                   </div>
                 </td>
 
-                {/* Work Information */}
-                <td className="p-4">
+                <td className="p-4 align-top">
                   <div className="space-y-2">
                     <div>
-                      <div className="font-medium text-gray-300">Job Title</div>
+                      <label className="block font-medium text-gray-300 mb-1">Job Title</label>
                       <input
                         type="text"
                         value={image.job_title || ''}
@@ -208,7 +227,17 @@ function DatabaseViewer({ images, onUpdateImage }) {
                       />
                     </div>
                     <div>
-                      <div className="font-medium text-gray-300">Organization</div>
+                      <label className="block font-medium text-gray-300 mb-1">Department</label>
+                      <input
+                        type="text"
+                        value={image.department || ''}
+                        onChange={(e) => handleInputChange(image.id, 'department', e.target.value)}
+                        disabled={!editMode}
+                        className={getFieldClassName(image.id, 'department')}
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium text-gray-300 mb-1">Organization</label>
                       <input
                         type="text"
                         value={image.organization_name || ''}
@@ -220,11 +249,10 @@ function DatabaseViewer({ images, onUpdateImage }) {
                   </div>
                 </td>
 
-                {/* Contact Information */}
-                <td className="p-4">
+                <td className="p-4 align-top">
                   <div className="space-y-4">
                     <div>
-                      <div className="font-medium text-gray-300 mb-1">Phone Numbers</div>
+                      <label className="block font-medium text-gray-300 mb-1">Phone Numbers</label>
                       <textarea
                         value={(image.phone_numbers || []).join('\n')}
                         onChange={(e) => handleArrayInputChange(image.id, 'phone_numbers', e.target.value)}
@@ -234,7 +262,7 @@ function DatabaseViewer({ images, onUpdateImage }) {
                       />
                     </div>
                     <div>
-                      <div className="font-medium text-gray-300 mb-1">Email Addresses</div>
+                      <label className="block font-medium text-gray-300 mb-1">Email Addresses</label>
                       <textarea
                         value={(image.email_addresses || []).join('\n')}
                         onChange={(e) => handleArrayInputChange(image.id, 'email_addresses', e.target.value, 'email')}
@@ -242,7 +270,7 @@ function DatabaseViewer({ images, onUpdateImage }) {
                         className={getFieldClassName(image.id, 'email_addresses')}
                         rows={3}
                       />
-                      {editMode && (
+                      {getValidationMessage(image.id, 'email_addresses') && (
                         <div className="text-sm text-red-400 mt-1">
                           {getValidationMessage(image.id, 'email_addresses')}
                         </div>
@@ -251,10 +279,9 @@ function DatabaseViewer({ images, onUpdateImage }) {
                   </div>
                 </td>
 
-                {/* Online Presence */}
-                <td className="p-4">
+                <td className="p-4 align-top">
                   <div>
-                    <div className="font-medium text-gray-300 mb-1">URLs</div>
+                    <label className="block font-medium text-gray-300 mb-1">URLs</label>
                     <textarea
                       value={(image.url_addresses || []).join('\n')}
                       onChange={(e) => handleArrayInputChange(image.id, 'url_addresses', e.target.value, 'url')}
@@ -262,7 +289,7 @@ function DatabaseViewer({ images, onUpdateImage }) {
                       className={getFieldClassName(image.id, 'url_addresses')}
                       rows={3}
                     />
-                    {editMode && (
+                    {getValidationMessage(image.id, 'url_addresses') && (
                       <div className="text-sm text-red-400 mt-1">
                         {getValidationMessage(image.id, 'url_addresses')}
                       </div>
