@@ -10,7 +10,7 @@ import hashlib
 from PIL import Image
 from io import BytesIO
 import base64
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 # Create FastAPI app instance
 app = FastAPI()
@@ -41,6 +41,19 @@ class SocialProfile(BaseModel):
 
 class DbPath(BaseModel):
     db_path: str
+
+class ImageUpdate(BaseModel):
+    name_prefix: Optional[str] = None
+    given_name: Optional[str] = None
+    middle_name: Optional[str] = None
+    family_name: Optional[str] = None
+    name_suffix: Optional[str] = None
+    job_title: Optional[str] = None
+    department: Optional[str] = None
+    organization_name: Optional[str] = None
+    phone_numbers: Optional[List[str]] = None
+    email_addresses: Optional[List[str]] = None
+    url_addresses: Optional[List[str]] = None
 
 class ImageDatabase:
     def __init__(self, db_path):
@@ -213,6 +226,60 @@ class ImageDatabase:
         except Exception as e:
             print(f"Error saving image: {e}")
             return False
+        
+    def update_image(self, image_id: int, update_data: Dict[str, Any]) -> bool:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Update main image fields
+                main_fields = [
+                    'name_prefix', 'given_name', 'middle_name', 'family_name',
+                    'name_suffix', 'job_title', 'department', 'organization_name'
+                ]
+                
+                # Filter out fields that are actually present in the update
+                update_fields = {k: v for k, v in update_data.items() if k in main_fields and v is not None}
+                
+                if update_fields:
+                    query = "UPDATE images SET " + ", ".join(f"{k} = ?" for k in update_fields.keys())
+                    query += " WHERE id = ?"
+                    cursor.execute(query, list(update_fields.values()) + [image_id])
+                
+                # Update phone numbers
+                if 'phone_numbers' in update_data:
+                    cursor.execute("DELETE FROM phone_numbers WHERE image_id = ?", (image_id,))
+                    for phone in update_data['phone_numbers']:
+                        if phone.strip():  # Only insert non-empty values
+                            cursor.execute(
+                                "INSERT INTO phone_numbers (image_id, phone_number) VALUES (?, ?)",
+                                (image_id, phone.strip())
+                            )
+                
+                # Update email addresses
+                if 'email_addresses' in update_data:
+                    cursor.execute("DELETE FROM email_addresses WHERE image_id = ?", (image_id,))
+                    for email in update_data['email_addresses']:
+                        if email.strip():  # Only insert non-empty values
+                            cursor.execute(
+                                "INSERT INTO email_addresses (image_id, email_address) VALUES (?, ?)",
+                                (image_id, email.strip())
+                            )
+                
+                # Update URLs
+                if 'url_addresses' in update_data:
+                    cursor.execute("DELETE FROM url_addresses WHERE image_id = ?", (image_id,))
+                    for url in update_data['url_addresses']:
+                        if url.strip():  # Only insert non-empty values
+                            cursor.execute(
+                                "INSERT INTO url_addresses (image_id, url) VALUES (?, ?)",
+                                (image_id, url.strip())
+                            )
+                
+                return True
+        except Exception as e:
+            print(f"Error updating image: {e}")
+            return False
 
 # Global database instance
 image_db = None
@@ -327,3 +394,15 @@ async def get_images():
             images.append(image_dict)
             
     return {"images": images}
+
+@app.put("/update/{image_id}")
+async def update_image_data(image_id: int, update_data: ImageUpdate):
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    success = image_db.update_image(image_id, update_data.model_dump(exclude_unset=True))
+    
+    if success:
+        return {"success": True, "message": "Image updated successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to update image")

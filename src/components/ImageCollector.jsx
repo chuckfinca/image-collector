@@ -110,6 +110,32 @@ function ImageCollector() {
     }
   };
 
+  const handleImageUpdate = async (imageId, updatedData) => {
+    if (!isConnected) return;
+    
+    try {
+      setLoading(true);
+      const response = await fetch(`http://localhost:8000/update/${imageId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatedData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update image data');
+      }
+
+      setMessage('Image data updated successfully');
+      await fetchImages(); // Refresh the images list
+    } catch (error) {
+      setMessage('Error updating image: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDisconnect = () => {
     localStorage.removeItem('imageDatabasePath');
     setIsConnected(false);
@@ -264,7 +290,10 @@ function ImageCollector() {
 
         {/* Database viewer section that takes remaining space */}
         <div className="flex-1">
-          <DatabaseViewer images={images} />
+          <DatabaseViewer 
+            images={images} 
+            onUpdateImage={handleImageUpdate}
+          />
         </div>
       </div>
     </div>
