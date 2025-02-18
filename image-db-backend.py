@@ -232,6 +232,26 @@ class ImageDatabase:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
+                # First, check if the table has the required columns
+                cursor.execute("PRAGMA table_info(images)")
+                existing_columns = {col[1] for col in cursor.fetchall()}
+                
+                # Add any missing columns
+                required_columns = {
+                    'name_prefix': 'TEXT',
+                    'given_name': 'TEXT',
+                    'middle_name': 'TEXT',
+                    'family_name': 'TEXT',
+                    'name_suffix': 'TEXT',
+                    'job_title': 'TEXT',
+                    'department': 'TEXT',
+                    'organization_name': 'TEXT'
+                }
+                
+                for column, type_ in required_columns.items():
+                    if column not in existing_columns:
+                        cursor.execute(f"ALTER TABLE images ADD COLUMN {column} {type_}")
+                
                 # Update main image fields
                 main_fields = [
                     'name_prefix', 'given_name', 'middle_name', 'family_name',
@@ -239,7 +259,7 @@ class ImageDatabase:
                 ]
                 
                 # Filter out fields that are actually present in the update
-                update_fields = {k: v for k, v in update_data.items() if k in main_fields and v is not None}
+                update_fields = {k: v for k, v in update_data.items() if k in main_fields}
                 
                 if update_fields:
                     query = "UPDATE images SET " + ", ".join(f"{k} = ?" for k in update_fields.keys())
@@ -249,8 +269,8 @@ class ImageDatabase:
                 # Update phone numbers
                 if 'phone_numbers' in update_data:
                     cursor.execute("DELETE FROM phone_numbers WHERE image_id = ?", (image_id,))
-                    for phone in update_data['phone_numbers']:
-                        if phone.strip():  # Only insert non-empty values
+                    for phone in (update_data['phone_numbers'] or []):
+                        if phone and phone.strip():
                             cursor.execute(
                                 "INSERT INTO phone_numbers (image_id, phone_number) VALUES (?, ?)",
                                 (image_id, phone.strip())
@@ -259,8 +279,8 @@ class ImageDatabase:
                 # Update email addresses
                 if 'email_addresses' in update_data:
                     cursor.execute("DELETE FROM email_addresses WHERE image_id = ?", (image_id,))
-                    for email in update_data['email_addresses']:
-                        if email.strip():  # Only insert non-empty values
+                    for email in (update_data['email_addresses'] or []):
+                        if email and email.strip():
                             cursor.execute(
                                 "INSERT INTO email_addresses (image_id, email_address) VALUES (?, ?)",
                                 (image_id, email.strip())
@@ -269,8 +289,8 @@ class ImageDatabase:
                 # Update URLs
                 if 'url_addresses' in update_data:
                     cursor.execute("DELETE FROM url_addresses WHERE image_id = ?", (image_id,))
-                    for url in update_data['url_addresses']:
-                        if url.strip():  # Only insert non-empty values
+                    for url in (update_data['url_addresses'] or []):
+                        if url and url.strip():
                             cursor.execute(
                                 "INSERT INTO url_addresses (image_id, url) VALUES (?, ?)",
                                 (image_id, url.strip())
