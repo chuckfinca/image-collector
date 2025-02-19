@@ -252,7 +252,7 @@ function DatabaseViewer({ images, onUpdateImage }) {
                 <td className="p-4 align-top">
                   <div className="space-y-4">
                     <div>
-                      <label className="block font-medium text-gray-300 mb-1">Phone Numbers</label>
+                      <label className="block font-medium text-gray-300 mb-1">Phone Numbers<br></br>(line separated)</label>
                       <textarea
                         value={(image.phone_numbers || []).join('\n')}
                         onChange={(e) => handleArrayInputChange(image.id, 'phone_numbers', e.target.value)}
@@ -262,7 +262,7 @@ function DatabaseViewer({ images, onUpdateImage }) {
                       />
                     </div>
                     <div>
-                      <label className="block font-medium text-gray-300 mb-1">Email Addresses</label>
+                      <label className="block font-medium text-gray-300 mb-1">Email Addresses<br></br>(line separated)</label>
                       <textarea
                         value={(image.email_addresses || []).join('\n')}
                         onChange={(e) => handleArrayInputChange(image.id, 'email_addresses', e.target.value, 'email')}
@@ -281,7 +281,7 @@ function DatabaseViewer({ images, onUpdateImage }) {
 
                 <td className="p-4 align-top">
                   <div>
-                    <label className="block font-medium text-gray-300 mb-1">URLs</label>
+                    <label className="block font-medium text-gray-300 mb-1">URLs<br></br>(line separated)</label>
                     <textarea
                       value={(image.url_addresses || []).join('\n')}
                       onChange={(e) => handleArrayInputChange(image.id, 'url_addresses', e.target.value, 'url')}
