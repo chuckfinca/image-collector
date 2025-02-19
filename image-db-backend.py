@@ -68,6 +68,7 @@ class ImageDatabase:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS images (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    filename TEXT NOT NULL,
                     image_data BLOB NOT NULL,
                     hash TEXT UNIQUE,
                     date_added TIMESTAMP,
@@ -82,10 +83,7 @@ class ImageDatabase:
                     -- Work Information
                     job_title TEXT,
                     department TEXT,
-                    organization_name TEXT,
-                    
-                    -- Notes
-                    notes TEXT
+                    organization_name TEXT
                 )
             """)
             
@@ -147,7 +145,7 @@ class ImageDatabase:
     async def save_image(self, image_data: bytes, metadata: dict = None) -> bool:
         if metadata is None:
             metadata = {}
-            
+        
         image_hash = hashlib.sha256(image_data).hexdigest()
         
         try:
@@ -161,18 +159,17 @@ class ImageDatabase:
                     # Insert main image record
                     cursor.execute("""
                         INSERT INTO images (
-                            image_data, hash, date_added,
+                            filename, image_data, hash, date_added,
                             name_prefix, given_name, middle_name, family_name, name_suffix,
-                            job_title, department, organization_name,
-                            notes
+                            job_title, department, organization_name
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
+                        metadata.get('filename', 'unknown.jpg'),  # Add default filename
                         image_data, image_hash, datetime.now(),
                         metadata.get('name_prefix'), metadata.get('given_name'),
                         metadata.get('middle_name'), metadata.get('family_name'),
                         metadata.get('name_suffix'), metadata.get('job_title'),
-                        metadata.get('department'), metadata.get('organization_name'),
-                        metadata.get('notes')
+                        metadata.get('department'), metadata.get('organization_name')
                     ))
                     
                     image_id = cursor.lastrowid
@@ -220,11 +217,16 @@ class ImageDatabase:
                         ))
                     
                     return True
-                except sqlite3.IntegrityError:
+                    
+                except sqlite3.IntegrityError as e:
+                    print(f"Database integrity error: {e}")
                     return False
-                
+                except Exception as e:
+                    print(f"Database insertion error: {e}")
+                    return False
+                    
         except Exception as e:
-            print(f"Error saving image: {e}")
+            print(f"Error in save_image: {e}")
             return False
         
     def update_image(self, image_id: int, update_data: Dict[str, Any]) -> bool:
@@ -300,6 +302,63 @@ class ImageDatabase:
         except Exception as e:
             print(f"Error updating image: {e}")
             return False
+        
+    async def extract_contact_info(self, image_id: int) -> dict:
+        """Extract contact information from an image using the LLM server."""
+        try:
+            # Get the image data and filename from the database
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT image_data, filename FROM images WHERE id = ?", (image_id,))
+                result = cursor.fetchone()
+                if not result:
+                    raise Exception("Image not found")
+                
+                image_data, filename = result
+                if not filename:
+                    filename = f"image_{image_id}.jpg"  # Default filename if none exists
+            
+            # Create files form data
+            form_data = aiohttp.FormData()
+            form_data.add_field('file', 
+                            image_data,
+                            filename=filename,
+                            content_type='image/jpeg')  # Adjust content type as needed
+            
+            # Call the LLM server
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://api.appsimple.io/v1/extract-contact",
+                    data=form_data
+                ) as response:
+                    if response.status != 200:
+                        raise Exception(f"LLM server error: {await response.text()}")
+                    
+                    result = await response.json()
+                    contact_info = result.get("content", {})
+                    
+                    # Map the extraction results to our database schema
+                    mapped_info = {
+                        "name_prefix": contact_info.get("prefix"),
+                        "given_name": contact_info.get("given_name"),
+                        "middle_name": contact_info.get("middle_name"),
+                        "family_name": contact_info.get("family_name"),
+                        "name_suffix": contact_info.get("suffix"),
+                        "job_title": contact_info.get("job_title"),
+                        "department": contact_info.get("department"),
+                        "organization_name": contact_info.get("organization"),
+                        "email_addresses": contact_info.get("emails", []),
+                        "phone_numbers": contact_info.get("phones", []),
+                        "url_addresses": contact_info.get("urls", [])
+                    }
+                    
+                    # Update the database with extracted information
+                    self.update_image(image_id, mapped_info)
+                    return mapped_info
+                    
+        except Exception as e:
+            print(f"Error extracting contact info: {e}")
+            raise
 
 # Global database instance
 image_db = None
@@ -319,7 +378,7 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Database not initialized")
     
     contents = await file.read()
-    success = await image_db.save_image(contents)
+    success = await image_db.save_image(contents, metadata={'filename': file.filename})
     return {"success": success}
 
 @app.post("/upload/url")
@@ -426,3 +485,14 @@ async def update_image_data(image_id: int, update_data: ImageUpdate):
         return {"success": True, "message": "Image updated successfully"}
     else:
         raise HTTPException(status_code=500, detail="Failed to update image")
+    
+@app.post("/extract/{image_id}")
+async def extract_contact(image_id: int):
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    try:
+        contact_info = await image_db.extract_contact_info(image_id)
+        return {"success": True, "data": contact_info}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

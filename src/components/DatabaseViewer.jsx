@@ -4,6 +4,7 @@ function DatabaseViewer({ images, onUpdateImage }) {
   const [editMode, setEditMode] = useState(false);
   const [editableImages, setEditableImages] = useState([]);
   const [validationState, setValidationState] = useState({});
+  const [extracting, setExtracting] = useState({});  // Track extraction state per image
 
   if (!images || images.length === 0) {
     return (
@@ -12,6 +13,38 @@ function DatabaseViewer({ images, onUpdateImage }) {
       </div>
     );
   }
+
+  const handleExtract = async (imageId) => {
+    try {
+      setExtracting(prev => ({ ...prev, [imageId]: true }));
+      
+      const response = await fetch(`http://localhost:8000/extract/${imageId}`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to extract contact information');
+      }
+      
+      const result = await response.json();
+      if (result.success && result.data) {
+        // Update the image data in the UI
+        onUpdateImage(imageId, result.data);
+        // Show success message
+        alert('Successfully extracted contact information!');
+      } else {
+        throw new Error('No data received from extraction service');
+      }
+    } catch (error) {
+      console.error('Error extracting contact info:', error);
+      alert(`Error extracting contact info: ${error.message}`);
+    } finally {
+      setExtracting(prev => ({ ...prev, [imageId]: false }));
+    }
+  };
+  
+  
 
   // Validation functions remain the same
   const validateField = (value, type) => {
@@ -157,6 +190,13 @@ function DatabaseViewer({ images, onUpdateImage }) {
                   <div className="text-xs text-gray-400 mt-2">
                     Added: {new Date(image.date_added).toLocaleString()}
                   </div>
+                  <button
+                    onClick={() => handleExtract(image.id)}
+                    disabled={extracting[image.id] || !editMode}
+                    className="mt-2 w-full px-2 py-1 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50 transition-colors"
+                  >
+                    {extracting[image.id] ? 'Extracting...' : 'Extract Contact Info'}
+                  </button>
                 </td>
 
                 <td className="p-4 align-top">
