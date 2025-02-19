@@ -5,8 +5,8 @@ function DropZone({ isDragging, loading, onDragEnter, onDragOver, onDragLeave, o
     <div
       className={`dropzone relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 ${
         isDragging 
-          ? 'border-blue-500 bg-blue-50' 
-          : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+          ? 'border-blue-500 bg-blue-50/50' 
+          : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50/50'
       }`}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
