@@ -1,16 +1,19 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Any, Dict, TypeVar, Generic, List, Optional
 import sqlite3
 import os
-import aiofiles
 import aiohttp
 from datetime import datetime
 import hashlib
 from PIL import Image
 from io import BytesIO
 import base64
-from typing import Any, Dict, List, Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Create FastAPI app instance
 app = FastAPI()
@@ -23,6 +26,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Define a generic type for the data field
+T = TypeVar('T')
+
+class ServerResponse(BaseModel, Generic[T]):
+    success: bool
+    data: T
+    error: Optional[str] = None
+    timestamp: str
+
+class ContactInfo(BaseModel):
+    prefix: Optional[str] = None
+    given_name: Optional[str] = None
+    middle_name: Optional[str] = None
+    family_name: Optional[str] = None
+    suffix: Optional[str] = None
+    job_title: Optional[str] = None
+    department: Optional[str] = None
+    organization: Optional[str] = None
+    emails: List[str] = []
+    phones: List[str] = []
+    urls: List[str] = []
 
 class PostalAddress(BaseModel):
     street: Optional[str] = None
@@ -306,58 +331,110 @@ class ImageDatabase:
     async def extract_contact_info(self, image_id: int) -> dict:
         """Extract contact information from an image using the LLM server."""
         try:
+            print(f"Starting extraction for image_id: {image_id}")
+            
             # Get the image data and filename from the database
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT image_data, filename FROM images WHERE id = ?", (image_id,))
                 result = cursor.fetchone()
                 if not result:
+                    print(f"Image not found for id: {image_id}")
                     raise Exception("Image not found")
                 
                 image_data, filename = result
-                if not filename:
-                    filename = f"image_{image_id}.jpg"  # Default filename if none exists
+                print(f"Found image with filename: {filename}")
+                
+            # Convert image data to base64
+            base64_image = base64.b64encode(image_data).decode('utf-8')
+            print("Successfully converted image to base64")
             
-            # Create files form data
-            form_data = aiohttp.FormData()
-            form_data.add_field('file', 
-                            image_data,
-                            filename=filename,
-                            content_type='image/jpeg')  # Adjust content type as needed
+            # Prepare the request body
+            request_body = {
+                "pipeline_id": "extract-contact",
+                "content": base64_image,
+                "media_type": "image",
+                "params": {
+                    "model_id": "gpt-4o-mini"
+                }
+            }
+            print(f"Prepared request body with pipeline_id: {request_body['pipeline_id']}")
             
-            # Call the LLM server
+            # Call the LLM server with proper authentication
+            headers = {
+                "Content-Type": "application/json",
+                "X-API-Key": os.getenv("LLM_SERVER_API_KEY")
+            }
+            
             async with aiohttp.ClientSession() as session:
+                print("Making request to LLM server...")
                 async with session.post(
                     "https://api.appsimple.io/v1/extract-contact",
-                    data=form_data
+                    json=request_body,
+                    headers=headers,
+                    timeout=60
                 ) as response:
-                    if response.status != 200:
-                        raise Exception(f"LLM server error: {await response.text()}")
+                    # Check HTTP status code first
+                    print(f"Received response with status: {response.status}")
+                    if not 200 <= response.status < 300:
+                        error_text = await response.text()
+                        print(f"HTTP error response: {error_text}")
+                        raise Exception(f"LLM server HTTP error {response.status}: {error_text}")
                     
-                    result = await response.json()
-                    contact_info = result.get("content", {})
+                    # Parse the response using our Pydantic models
+                    raw_response = await response.json()
+                    print("Raw server response:", raw_response)
                     
-                    # Map the extraction results to our database schema
-                    mapped_info = {
-                        "name_prefix": contact_info.get("prefix"),
-                        "given_name": contact_info.get("given_name"),
-                        "middle_name": contact_info.get("middle_name"),
-                        "family_name": contact_info.get("family_name"),
-                        "name_suffix": contact_info.get("suffix"),
-                        "job_title": contact_info.get("job_title"),
-                        "department": contact_info.get("department"),
-                        "organization_name": contact_info.get("organization"),
-                        "email_addresses": contact_info.get("emails", []),
-                        "phone_numbers": contact_info.get("phones", []),
-                        "url_addresses": contact_info.get("urls", [])
-                    }
+                    try:
+                        server_response = ServerResponse[ContactInfo].model_validate(raw_response)
+                        print("Successfully validated server response")
+                    except Exception as validation_error:
+                        print(f"Validation error: {validation_error}")
+                        print(f"Raw response structure: {raw_response.keys() if isinstance(raw_response, dict) else 'not a dict'}")
+                        raise
+                    
+                    # The success check is handled by Pydantic validation
+                    if not server_response.success:
+                        error_msg = server_response.error or 'Unknown error'
+                        print(f"Server indicated failure: {error_msg}")
+                        raise Exception(f"LLM server error: {error_msg}")
+                    
+                    # Get the validated contact info
+                    contact_info = server_response.data
+                    print("Contact info after validation:", contact_info)
+                    
+                    # Map the validated contact info to our database structure
+                    try:
+                        mapped_info = {
+                            "name_prefix": contact_info.prefix or "",
+                            "given_name": contact_info.given_name or "",
+                            "middle_name": contact_info.middle_name or "",
+                            "family_name": contact_info.family_name or "",
+                            "name_suffix": contact_info.suffix or "",
+                            "job_title": contact_info.job_title or "",
+                            "department": contact_info.department or "",
+                            "organization_name": contact_info.organization or "",
+                            "email_addresses": [email for email in contact_info.emails if email],
+                            "phone_numbers": [phone for phone in contact_info.phones if phone],
+                            "url_addresses": [url for url in contact_info.urls if url]
+                        }
+                        print("Successfully mapped contact info to database structure")
+                    except Exception as mapping_error:
+                        print(f"Error during mapping: {mapping_error}")
+                        print(f"Contact info structure: {dir(contact_info)}")
+                        raise
                     
                     # Update the database with extracted information
+                    print("Updating database with mapped info")
                     self.update_image(image_id, mapped_info)
                     return mapped_info
-                    
+                        
         except Exception as e:
             print(f"Error extracting contact info: {e}")
+            print(f"Error type: {type(e)}")
+            import traceback
+            print("Full traceback:")
+            print(traceback.format_exc())
             raise
 
 # Global database instance
