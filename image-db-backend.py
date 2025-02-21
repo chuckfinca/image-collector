@@ -37,17 +37,11 @@ class ServerResponse(BaseModel, Generic[T]):
     timestamp: str
 
 class ContactInfo(BaseModel):
-    prefix: Optional[str] = None
-    given_name: Optional[str] = None
-    middle_name: Optional[str] = None
-    family_name: Optional[str] = None
-    suffix: Optional[str] = None
-    job_title: Optional[str] = None
-    department: Optional[str] = None
-    organization: Optional[str] = None
-    emails: List[str] = []
-    phones: List[str] = []
-    urls: List[str] = []
+    name: Dict[str, Optional[str]]
+    work: Dict[str, Optional[str]]
+    contact: Dict[str, List[str]]
+    social: List[Dict[str, str]]
+    notes: Optional[str] = None
 
 class PostalAddress(BaseModel):
     street: Optional[str] = None
@@ -327,7 +321,8 @@ class ImageDatabase:
         except Exception as e:
             print(f"Error updating image: {e}")
             return False
-        
+
+    # Then update the extract_contact_info method in ImageDatabase class
     async def extract_contact_info(self, image_id: int) -> dict:
         """Extract contact information from an image using the LLM server."""
         try:
@@ -358,7 +353,6 @@ class ImageDatabase:
                     "model_id": "gpt-4o-mini"
                 }
             }
-            print(f"Prepared request body with pipeline_id: {request_body['pipeline_id']}")
             
             # Call the LLM server with proper authentication
             headers = {
@@ -374,14 +368,12 @@ class ImageDatabase:
                     headers=headers,
                     timeout=60
                 ) as response:
-                    # Check HTTP status code first
                     print(f"Received response with status: {response.status}")
                     if not 200 <= response.status < 300:
                         error_text = await response.text()
                         print(f"HTTP error response: {error_text}")
                         raise Exception(f"LLM server HTTP error {response.status}: {error_text}")
                     
-                    # Parse the response using our Pydantic models
                     raw_response = await response.json()
                     print("Raw server response:", raw_response)
                     
@@ -390,38 +382,34 @@ class ImageDatabase:
                         print("Successfully validated server response")
                     except Exception as validation_error:
                         print(f"Validation error: {validation_error}")
-                        print(f"Raw response structure: {raw_response.keys() if isinstance(raw_response, dict) else 'not a dict'}")
                         raise
                     
-                    # The success check is handled by Pydantic validation
                     if not server_response.success:
                         error_msg = server_response.error or 'Unknown error'
                         print(f"Server indicated failure: {error_msg}")
                         raise Exception(f"LLM server error: {error_msg}")
                     
-                    # Get the validated contact info
                     contact_info = server_response.data
                     print("Contact info after validation:", contact_info)
                     
-                    # Map the validated contact info to our database structure
+                    # Map the nested data to our database structure
                     try:
                         mapped_info = {
-                            "name_prefix": contact_info.prefix or "",
-                            "given_name": contact_info.given_name or "",
-                            "middle_name": contact_info.middle_name or "",
-                            "family_name": contact_info.family_name or "",
-                            "name_suffix": contact_info.suffix or "",
-                            "job_title": contact_info.job_title or "",
-                            "department": contact_info.department or "",
-                            "organization_name": contact_info.organization or "",
-                            "email_addresses": [email for email in contact_info.emails if email],
-                            "phone_numbers": [phone for phone in contact_info.phones if phone],
-                            "url_addresses": [url for url in contact_info.urls if url]
+                            "name_prefix": contact_info.name.get('prefix', ''),
+                            "given_name": contact_info.name.get('given_name', ''),
+                            "middle_name": contact_info.name.get('middle_name', ''),
+                            "family_name": contact_info.name.get('family_name', ''),
+                            "name_suffix": contact_info.name.get('suffix', ''),
+                            "job_title": contact_info.work.get('job_title', ''),
+                            "department": contact_info.work.get('department', ''),
+                            "organization_name": contact_info.work.get('organization_name', ''),
+                            "email_addresses": contact_info.contact.get('email_addresses', []),
+                            "phone_numbers": contact_info.contact.get('phone_numbers', []),
+                            "url_addresses": contact_info.contact.get('url_addresses', [])
                         }
                         print("Successfully mapped contact info to database structure")
                     except Exception as mapping_error:
                         print(f"Error during mapping: {mapping_error}")
-                        print(f"Contact info structure: {dir(contact_info)}")
                         raise
                     
                     # Update the database with extracted information

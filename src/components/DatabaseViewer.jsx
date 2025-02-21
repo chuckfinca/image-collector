@@ -29,9 +29,30 @@ function DatabaseViewer({ images, onUpdateImage }) {
       
       const result = await response.json();
       if (result.success && result.data) {
-        // Update the image data in the UI
-        onUpdateImage(imageId, result.data);
-        // Show success message
+        // Get the current image data
+        const currentImageData = editMode 
+          ? editableImages.find(img => img.id === imageId)
+          : images.find(img => img.id === imageId);
+
+        // Merge the extracted data with existing data
+        const updatedData = {
+          ...currentImageData,
+          ...result.data,
+          // Ensure arrays are properly handled
+          phone_numbers: result.data.phone_numbers || currentImageData.phone_numbers,
+          email_addresses: result.data.email_addresses || currentImageData.email_addresses,
+          url_addresses: result.data.url_addresses || currentImageData.url_addresses
+        };
+
+        // Update both the editable state and the backend
+        if (editMode) {
+          setEditableImages(prev => 
+            prev.map(img => img.id === imageId ? updatedData : img)
+          );
+        }
+
+        // Update the backend and trigger a refresh
+        await onUpdateImage(imageId, result.data);
         alert('Successfully extracted contact information!');
       } else {
         throw new Error('No data received from extraction service');
@@ -44,8 +65,6 @@ function DatabaseViewer({ images, onUpdateImage }) {
     }
   };
   
-  
-
   // Validation functions remain the same
   const validateField = (value, type) => {
     if (!value) return true;
