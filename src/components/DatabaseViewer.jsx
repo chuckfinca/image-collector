@@ -8,6 +8,30 @@ function DatabaseViewer({ images, onUpdateImage }) {
   const [extracting, setExtracting] = useState({});  // Track extraction state per image
   const [selectedImageUrl, setSelectedImageUrl] = useState(null);
 
+  const handleDelete = async (imageId) => {
+    // Show built-in confirmation dialog
+    if (!window.confirm('Are you sure you want to delete this entry? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`http://localhost:8000/image/${imageId}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete image');
+      }
+      
+      // Use onUpdateImage as a trigger to fetch images
+      await onUpdateImage(imageId, {});
+      
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      alert('Failed to delete image: ' + error.message);
+    }
+  };
+
   if (!images || images.length === 0) {
     return (
       <div className="text-gray-400 text-center py-8">
@@ -231,8 +255,13 @@ function DatabaseViewer({ images, onUpdateImage }) {
                   >
                     {extracting[image.id] ? 'Extracting...' : 'Extract Contact Info'}
                   </button>
+                  <button
+                    onClick={() => handleDelete(image.id)}
+                    className="mt-2 w-full px-2 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 transition-colors"
+                  >
+                    Delete Entry
+                  </button>
                 </td>
-
                 <td className="p-4 align-top">
                   <div className="space-y-2">
                     <div>

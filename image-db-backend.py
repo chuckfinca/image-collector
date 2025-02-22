@@ -561,6 +561,33 @@ async def extract_contact(image_id: int):
         return {"success": True, "data": contact_info}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/image/{image_id}")
+async def delete_image(image_id: int):
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    try:
+        with sqlite3.connect(image_db.db_path) as conn:
+            cursor = conn.cursor()
+            
+            # Delete related records first
+            cursor.execute("DELETE FROM phone_numbers WHERE image_id = ?", (image_id,))
+            cursor.execute("DELETE FROM email_addresses WHERE image_id = ?", (image_id,))
+            cursor.execute("DELETE FROM postal_addresses WHERE image_id = ?", (image_id,))
+            cursor.execute("DELETE FROM url_addresses WHERE image_id = ?", (image_id,))
+            cursor.execute("DELETE FROM social_profiles WHERE image_id = ?", (image_id,))
+            
+            # Delete the main image record
+            cursor.execute("DELETE FROM images WHERE id = ?", (image_id,))
+            
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Image not found")
+                
+            return {"success": True, "message": "Image deleted successfully"}
+            
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
 @app.get("/image/{image_id}")
 async def get_full_image(image_id: int):
