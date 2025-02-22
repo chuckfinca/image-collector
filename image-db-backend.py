@@ -561,3 +561,27 @@ async def extract_contact(image_id: int):
         return {"success": True, "data": contact_info}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.get("/image/{image_id}")
+async def get_full_image(image_id: int):
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    with sqlite3.connect(image_db.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT image_data FROM images WHERE id = ?", (image_id,))
+        result = cursor.fetchone()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Image not found")
+        
+        image_data = result[0]
+        if image_data:
+            try:
+                # Convert to base64
+                image_base64 = base64.b64encode(image_data).decode('utf-8')
+                return {"image_data": image_base64}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+        else:
+            raise HTTPException(status_code=404, detail="Image data not found")

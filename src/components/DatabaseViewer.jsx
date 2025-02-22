@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import ImageViewModal from './ImageViewModal'
 
 function DatabaseViewer({ images, onUpdateImage }) {
   const [editMode, setEditMode] = useState(false);
   const [editableImages, setEditableImages] = useState([]);
   const [validationState, setValidationState] = useState({});
   const [extracting, setExtracting] = useState({});  // Track extraction state per image
+  const [selectedImageUrl, setSelectedImageUrl] = useState(null);
 
   if (!images || images.length === 0) {
     return (
@@ -166,6 +168,7 @@ function DatabaseViewer({ images, onUpdateImage }) {
 
   return (
     <div className="space-y-4">
+      <ImageViewModal imageUrl={selectedImageUrl} onClose={() => setSelectedImageUrl(null)}/>
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-gray-200">Database Contents</h2>
         <button
@@ -200,7 +203,19 @@ function DatabaseViewer({ images, onUpdateImage }) {
                       <img
                         src={image.thumbnail}
                         alt="Business card"
-                        className="object-contain w-full h-full rounded"
+                      className="object-contain w-full h-full rounded cursor-pointer"
+                      onDoubleClick={async () => {
+                        try {
+                          const response = await fetch(`http://localhost:8000/image/${image.id}`);
+                          if (!response.ok) {
+                            throw new Error('Failed to fetch full image');
+                          }
+                          const data = await response.json();
+                          setSelectedImageUrl(data.image_data);
+                        } catch (error) {
+                          console.error('Error loading full image:', error);
+                        }
+                      }}
                       />
                     ) : (
                       <div className="text-gray-500">No image</div>
