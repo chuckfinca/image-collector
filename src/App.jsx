@@ -1,10 +1,13 @@
+import { DatabaseProvider } from './context/DatabaseContext'
 import ImageCollector from './components/ImageCollector'
 
 function App() {
   return (
-    <main className="w-full">
-      <ImageCollector />
-    </main>
+    <DatabaseProvider>
+      <main className="w-full">
+        <ImageCollector />
+      </main>
+    </DatabaseProvider>
   )
 }
 
