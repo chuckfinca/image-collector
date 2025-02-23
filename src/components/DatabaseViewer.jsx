@@ -1,9 +1,36 @@
 import React, { useState } from 'react';
+import ImageViewModal from './ImageViewModal'
 
 function DatabaseViewer({ images, onUpdateImage }) {
   const [editMode, setEditMode] = useState(false);
   const [editableImages, setEditableImages] = useState([]);
   const [validationState, setValidationState] = useState({});
+  const [extracting, setExtracting] = useState({});  // Track extraction state per image
+  const [selectedImageUrl, setSelectedImageUrl] = useState(null);
+
+  const handleDelete = async (imageId) => {
+    // Show built-in confirmation dialog
+    if (!window.confirm('Are you sure you want to delete this entry? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`http://localhost:8000/image/${imageId}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete image');
+      }
+      
+      // Use onUpdateImage as a trigger to fetch images
+      await onUpdateImage(imageId, {});
+      
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      alert('Failed to delete image: ' + error.message);
+    }
+  };
 
   if (!images || images.length === 0) {
     return (
@@ -13,6 +40,57 @@ function DatabaseViewer({ images, onUpdateImage }) {
     );
   }
 
+  const handleExtract = async (imageId) => {
+    try {
+      setExtracting(prev => ({ ...prev, [imageId]: true }));
+      
+      const response = await fetch(`http://localhost:8000/extract/${imageId}`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to extract contact information');
+      }
+      
+      const result = await response.json();
+      if (result.success && result.data) {
+        // Get the current image data
+        const currentImageData = editMode 
+          ? editableImages.find(img => img.id === imageId)
+          : images.find(img => img.id === imageId);
+
+        // Merge the extracted data with existing data
+        const updatedData = {
+          ...currentImageData,
+          ...result.data,
+          // Ensure arrays are properly handled
+          phone_numbers: result.data.phone_numbers || currentImageData.phone_numbers,
+          email_addresses: result.data.email_addresses || currentImageData.email_addresses,
+          url_addresses: result.data.url_addresses || currentImageData.url_addresses
+        };
+
+        // Update both the editable state and the backend
+        if (editMode) {
+          setEditableImages(prev => 
+            prev.map(img => img.id === imageId ? updatedData : img)
+          );
+        }
+
+        // Update the backend and trigger a refresh
+        await onUpdateImage(imageId, result.data);
+        alert('Successfully extracted contact information!');
+      } else {
+        throw new Error('No data received from extraction service');
+      }
+    } catch (error) {
+      console.error('Error extracting contact info:', error);
+      alert(`Error extracting contact info: ${error.message}`);
+    } finally {
+      setExtracting(prev => ({ ...prev, [imageId]: false }));
+    }
+  };
+  
   // Validation functions remain the same
   const validateField = (value, type) => {
     if (!value) return true;
@@ -114,6 +192,7 @@ function DatabaseViewer({ images, onUpdateImage }) {
 
   return (
     <div className="space-y-4">
+      <ImageViewModal imageUrl={selectedImageUrl} onClose={() => setSelectedImageUrl(null)}/>
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-gray-200">Database Contents</h2>
         <button
@@ -148,7 +227,19 @@ function DatabaseViewer({ images, onUpdateImage }) {
                       <img
                         src={image.thumbnail}
                         alt="Business card"
-                        className="object-contain w-full h-full rounded"
+                      className="object-contain w-full h-full rounded cursor-pointer"
+                      onDoubleClick={async () => {
+                        try {
+                          const response = await fetch(`http://localhost:8000/image/${image.id}`);
+                          if (!response.ok) {
+                            throw new Error('Failed to fetch full image');
+                          }
+                          const data = await response.json();
+                          setSelectedImageUrl(data.image_data);
+                        } catch (error) {
+                          console.error('Error loading full image:', error);
+                        }
+                      }}
                       />
                     ) : (
                       <div className="text-gray-500">No image</div>
@@ -157,8 +248,20 @@ function DatabaseViewer({ images, onUpdateImage }) {
                   <div className="text-xs text-gray-400 mt-2">
                     Added: {new Date(image.date_added).toLocaleString()}
                   </div>
+                  <button
+                    onClick={() => handleExtract(image.id)}
+                    disabled={extracting[image.id] || !editMode}
+                    className="mt-2 w-full px-2 py-1 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50 transition-colors"
+                  >
+                    {extracting[image.id] ? 'Extracting...' : 'Extract Contact Info'}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(image.id)}
+                    className="mt-2 w-full px-2 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 transition-colors"
+                  >
+                    Delete Entry
+                  </button>
                 </td>
-
                 <td className="p-4 align-top">
                   <div className="space-y-2">
                     <div>
