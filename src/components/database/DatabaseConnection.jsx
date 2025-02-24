@@ -1,51 +1,88 @@
-import React from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDb } from '../../context/DatabaseContext';
+import { api } from '../../services/api';
 
 function DatabaseConnection() {
   const { 
     dbPath, 
     setDbPath, 
     isConnected, 
+    connect, 
+    disconnect, 
     loading, 
-    totalImages,
-    connect,
-    disconnect
+    error, 
+    totalImages 
   } = useDb();
 
+  const handleConnect = useCallback(async (e) => {
+    e.preventDefault();
+    await connect();
+  }, [connect]);
+
   return (
-    <div className="mb-6">
-      <h1 className="text-xl font-bold mb-4">
-        Image Collector {isConnected && `(${totalImages} images)`}
-      </h1>
+    <div className="bg-gray-800 p-4 rounded-lg shadow-lg border border-gray-700">
+      <h2 className="text-xl font-bold text-gray-200 mb-4">Database Connection</h2>
       
-      <div className="flex gap-2">
-        <input
-          type="text"
-          placeholder="/path/to/database.db"
-          value={dbPath}
-          onChange={(e) => setDbPath(e.target.value)}
-          disabled={isConnected || loading}
-          className="flex-1 px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        
-        {isConnected ? (
+      {isConnected ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-green-400 text-sm flex items-center gap-2">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Connected
+            </span>
+            <span className="text-sm text-gray-400">{totalImages} images</span>
+          </div>
+          
+          <div className="text-sm text-gray-300 truncate">
+            Path: <span className="font-mono text-gray-400">{dbPath}</span>
+          </div>
+          
           <button
             onClick={disconnect}
             disabled={loading}
-            className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50"
+            className="w-full mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
           >
             Disconnect
           </button>
-        ) : (
+        </div>
+      ) : (
+        <form onSubmit={handleConnect} className="space-y-4">
+          <div className="space-y-2">
+            <label className="block text-sm text-gray-300">
+              Database Path
+            </label>
+            <input
+              type="text"
+              value={dbPath}
+              onChange={(e) => setDbPath(e.target.value)}
+              placeholder="Enter database path (e.g., ~/images.db)"
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={loading}
+            />
+          </div>
+          
+          {error && (
+            <div className="text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+          
           <button
-            onClick={connect}
+            type="submit"
             disabled={loading || !dbPath.trim()}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+            className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
           >
-            Connect
+            {loading ? (
+              <span className="flex items-center justify-center">
+                <span className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full mr-2" />
+                Connecting...
+              </span>
+            ) : 'Connect'}
           </button>
-        )}
-      </div>
+        </form>
+      )}
     </div>
   );
 }

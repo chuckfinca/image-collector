@@ -470,6 +470,8 @@ async def get_status():
 
 @app.get("/images")
 async def get_images():
+    print("Fetching images from database")
+
     if not image_db:
         raise HTTPException(status_code=400, detail="Database not initialized")
     
@@ -483,61 +485,82 @@ async def get_images():
             ORDER BY date_added DESC
         """)
         rows = cursor.fetchall()
-        
+        print(f"Found {len(rows)} images in database")
+
         images = []
         for row in rows:
-            image_data = row['image_data']
-            image_id = row['id']
-            
-            # Create thumbnail
-            if image_data:
-                try:
-                    img = Image.open(BytesIO(image_data))
-                    img.thumbnail((200, 200))
-                    thumb_buffer = BytesIO()
-                    img.save(thumb_buffer, format=img.format)
-                    thumbnail = f"data:image/{img.format.lower()};base64,{base64.b64encode(thumb_buffer.getvalue()).decode()}"
-                except Exception as e:
-                    print(f"Error creating thumbnail: {e}")
-                    thumbnail = None
-            else:
+            try:
+                image_id = row['id']
+                print(f"Processing image ID: {image_id}")
+                
+                # Create image_dict first
+                image_dict = dict(row)
+                # Remove binary data early to avoid printing it
+                image_data = image_dict.pop('image_data')
+                print(f"Image data type: {type(image_data)}")
+                print(f"Image metadata: {image_dict}")
+                
+                # Create thumbnail with better error handling
                 thumbnail = None
+                if image_data:
+                    try:
+                        # Safely open the image
+                        img_buffer = BytesIO(image_data)
+                        img = Image.open(img_buffer)
+                        print(f"Image format: {img.format}, Size: {img.size}")
+                        
+                        # Create thumbnail
+                        img.thumbnail((200, 200))
+                        thumb_buffer = BytesIO()
+                        img.save(thumb_buffer, format=img.format or 'JPEG')
+                        thumbnail = f"data:image/{(img.format or 'jpeg').lower()};base64,{base64.b64encode(thumb_buffer.getvalue()).decode()}"
+                        print("Thumbnail created successfully")
+                    except Exception as e:
+                        print(f"Thumbnail creation error: {str(e)}")
+                        # Use a placeholder instead of failing
+                        thumbnail = None
+                
+                # Get phone numbers
+                cursor.execute("SELECT phone_number FROM phone_numbers WHERE image_id = ?", (image_id,))
+                phone_numbers = [r[0] for r in cursor.fetchall()]
+                
+                # Get email addresses
+                cursor.execute("SELECT email_address FROM email_addresses WHERE image_id = ?", (image_id,))
+                email_addresses = [r[0] for r in cursor.fetchall()]
+                
+                # Get postal addresses
+                cursor.execute("SELECT * FROM postal_addresses WHERE image_id = ?", (image_id,))
+                postal_addresses = [dict(r) for r in cursor.fetchall()]
+                
+                # Get URLs
+                cursor.execute("SELECT url FROM url_addresses WHERE image_id = ?", (image_id,))
+                url_addresses = [r[0] for r in cursor.fetchall()]
+                
+                # Get social profiles
+                cursor.execute("SELECT service, url, username FROM social_profiles WHERE image_id = ?", (image_id,))
+                social_profiles = [dict(zip(['service', 'url', 'username'], r)) for r in cursor.fetchall()]
 
-            # Get phone numbers
-            cursor.execute("SELECT phone_number FROM phone_numbers WHERE image_id = ?", (image_id,))
-            phone_numbers = [r[0] for r in cursor.fetchall()]
-            
-            # Get email addresses
-            cursor.execute("SELECT email_address FROM email_addresses WHERE image_id = ?", (image_id,))
-            email_addresses = [r[0] for r in cursor.fetchall()]
-            
-            # Get postal addresses
-            cursor.execute("SELECT * FROM postal_addresses WHERE image_id = ?", (image_id,))
-            postal_addresses = [dict(r) for r in cursor.fetchall()]
-            
-            # Get URLs
-            cursor.execute("SELECT url FROM url_addresses WHERE image_id = ?", (image_id,))
-            url_addresses = [r[0] for r in cursor.fetchall()]
-            
-            # Get social profiles
-            cursor.execute("SELECT service, url, username FROM social_profiles WHERE image_id = ?", (image_id,))
-            social_profiles = [dict(zip(['service', 'url', 'username'], r)) for r in cursor.fetchall()]
+                # Update the image dict with all data
+                image_dict.update({
+                    'thumbnail': thumbnail,
+                    'phone_numbers': phone_numbers,
+                    'email_addresses': email_addresses,
+                    'postal_addresses': postal_addresses,
+                    'url_addresses': url_addresses,
+                    'social_profiles': social_profiles
+                })
+                
+                # Add to images list
+                images.append(image_dict)
+                print(f"Successfully added image ID: {image_id} to response")
+                
+            except Exception as e:
+                print(f"Error processing image: {str(e)}")
+                # Continue with next image instead of failing completely
+                continue
 
-            # Combine all data
-            image_dict = dict(row)
-            del image_dict['image_data']  # Remove binary data from response
-            image_dict.update({
-                'thumbnail': thumbnail,
-                'phone_numbers': phone_numbers,
-                'email_addresses': email_addresses,
-                'postal_addresses': postal_addresses,
-                'url_addresses': url_addresses,
-                'social_profiles': social_profiles
-            })
-            
-            images.append(image_dict)
-            
-    return {"images": images}
+        print(f"Returning {len(images)} images")
+        return {"images": images}
 
 @app.put("/update/{image_id}")
 async def update_image_data(image_id: int, update_data: ImageUpdate):

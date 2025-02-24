@@ -47,17 +47,24 @@ function ImageThumbnail({
   return (
     <div className="space-y-2">
       <div className="w-32 h-32 bg-gray-800 rounded flex items-center justify-center">
-        {image.thumbnail ? (
-          <img
-            src={image.thumbnail}
-            alt="Business card"
-            className="object-contain w-full h-full rounded cursor-pointer"
-            onDoubleClick={handleImageClick}
-          />
-        ) : (
-          <div className="text-gray-500">No image</div>
-        )}
-      </div>
+    {image.thumbnail ? (
+        <img
+        src={image.thumbnail}
+        alt="Business card"
+        className="object-contain w-full h-full rounded cursor-pointer"
+        onDoubleClick={handleImageClick}
+        />
+    ) : (
+        <div className="text-gray-500 flex flex-col items-center justify-center w-full h-full">
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <path d="M20 15l-5-5L5 20" />
+        </svg>
+        <span className="text-xs mt-1">No thumbnail</span>
+        </div>
+    )}
+    </div>
       
       <div className="text-xs text-gray-400">
         Added: {new Date(image.date_added).toLocaleString()}

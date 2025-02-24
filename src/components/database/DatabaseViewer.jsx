@@ -21,6 +21,8 @@ function DatabaseViewer() {
 
   const [selectedImageUrl, setSelectedImageUrl] = React.useState(null);
 
+  console.log("DatabaseViewer received images:", images);
+  
   if (!images?.length) {
     return (
       <div className="text-gray-400 text-center py-8">

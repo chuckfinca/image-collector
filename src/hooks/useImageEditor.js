@@ -1,9 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { validateField, validateArray } from '../utils/validation';
-import { useDb } from '../context/DatabaseContext';
 
-export const useImageEditor = (images) => {
-  const { updateImage } = useDb();
+export const useImageEditor = (images, updateImage) => {
   const [editMode, setEditMode] = useState(false);
   const [editableImages, setEditableImages] = useState([]);
   const [validationState, setValidationState] = useState({});
