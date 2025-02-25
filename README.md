@@ -134,6 +134,7 @@ contact-info-collector/
 │
 ├── package.json             # Frontend dependencies
 └── README.md                # This documentation
+```
 
 ### Building for Production
 
