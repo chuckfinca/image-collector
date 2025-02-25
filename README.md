@@ -55,32 +55,40 @@ A full-stack application for scanning, storing, and organizing contact info imag
 ### Installation
 
 1. Clone the repository:
+```
 git clone https://github.com/yourusername/contact-info-collector.git
 cd contact-info-collector
+```
 
 2. Install backend dependencies:
+```
 # Create and activate virtual environment
 python -m venv .venv
 source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
 
 # Install required packages
 pip install fastapi uvicorn pillow python-dotenv aiohttp
+```
 
 3. Install frontend dependencies:
-npm install
+`npm install`
 
 4. Set up environment variables:
+```
 # Create a .env file in the root directory with your API key for contact extraction
 echo "LLM_SERVER_API_KEY=your_api_key_here" > .env
+```
 
 ### Running the Application
 
 1. Start the backend server:
+```
 # Make sure your virtual environment is activated
 uvicorn image_db.main:app --reload
+```
 
 2. Start the frontend development server in a separate terminal:
-npm run dev
+`npm run dev`
 
 3. Open your browser and navigate to the URL shown in the terminal (typically http://localhost:5173)
 
@@ -108,6 +116,7 @@ npm run dev
 ## Development
 
 ### Project Structure
+```
 contact-info-collector/
 ├── image_db/                # Backend Python package
 │   ├── api.py               # FastAPI routes
@@ -128,12 +137,14 @@ contact-info-collector/
 
 ### Building for Production
 
+```
 # Build the frontend
 npm run build
 
-# Deploy the backend (example using gunicorn)
+# Deploy the backend (example using uvicorn)
 pip install uvicorn
 uvicorn image_db.main:app --reload
+```
 
 ## Troubleshooting
 
