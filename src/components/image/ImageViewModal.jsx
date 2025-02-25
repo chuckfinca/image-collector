@@ -16,7 +16,7 @@ function ImageViewModal({ imageUrl, onClose }) {
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Business Card Image</title>
+            <title>Contact Info Image</title>
             <style>
               html, body {
                 margin: 0;
@@ -35,7 +35,7 @@ function ImageViewModal({ imageUrl, onClose }) {
           </head>
           <body>
             <img src="${imageUrl.startsWith('data:') ? imageUrl : `data:image/jpeg;base64,${imageUrl}`}" 
-                 alt="Business Card" />
+                 alt="Contact Info" />
           </body>
         </html>
       `;
@@ -47,7 +47,7 @@ function ImageViewModal({ imageUrl, onClose }) {
 
       windowRef.current = window.open(
         '',
-        'businessCard',
+        'contactInfo',
         `width=${width},height=${height},left=${left},top=${top},resizable=yes`
       );
 

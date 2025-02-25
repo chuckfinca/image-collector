@@ -1,269 +1,111 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import DatabaseConnection from './DatabaseConnection';
-import ImageUrlInput from './ImageUrlInput';
-import DropZone from './DropZone';
-import StatusMessage from './StatusMessage';
-import DatabaseViewer from './DatabaseViewer';
+import React, { useState } from 'react';
+import { useDb } from '../context/DatabaseContext';
+import DatabaseConnection from './database/DatabaseConnection';
+import DatabaseViewer from './database/DatabaseViewer';
+import DropZone from './image/DropZone';
+import ImageUrlInput from './image/ImageUrlInput';
+import StatusMessage from './ui/StatusMessage';
+import { api } from '../services/api';
 
 function ImageCollector() {
+  // Local UI state
   const [url, setUrl] = useState('');
-  const [dbPath, setDbPath] = useState(localStorage.getItem('imageDatabasePath') || '');
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [isConnected, setIsConnected] = useState(false);
-  const [totalImages, setTotalImages] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-  const [images, setImages] = useState([]);
-
-  const fetchStatus = useCallback(async () => {
-    if (!isConnected) return;
-    
-    try {
-      const response = await fetch('http://localhost:8000/status');
-      if (response.ok) {
-        const data = await response.json();
-        setTotalImages(data.total_images);
-      } else {
-        console.error('Failed to fetch status:', await response.text());
-      }
-    } catch (error) {
-      console.error('Error fetching status:', error);
-    }
-  }, [isConnected]);
-
-  const fetchImages = useCallback(async () => {
-    if (!isConnected) return;
-    
-    try {
-      const response = await fetch('http://localhost:8000/images');
-      if (response.ok) {
-        const data = await response.json();
-        setImages(data.images);
-      } else {
-        console.error('Failed to fetch images:', await response.text());
-      }
-    } catch (error) {
-      console.error('Error fetching images:', error);
-    }
-  }, [isConnected]);
-
-  useEffect(() => {
-    if (dbPath && !isConnected) {
-      initializeDatabase();
-    }
-  }, [dbPath]);
-
-  useEffect(() => {
-    if (isConnected) {
-      // Initial fetch
-      fetchStatus();
-      fetchImages();
-      
-      // Set up polling
-      const interval = setInterval(() => {
-        fetchStatus();
-        fetchImages();
-      }, 5000);
-      
-      return () => clearInterval(interval);
-    }
-  }, [isConnected, fetchStatus, fetchImages]);
-
-  const initializeDatabase = async () => {
-    if (!dbPath) {
-      setMessage('Please enter a database path');
-      return;
-    }
-
-    const cleanPath = dbPath.replace(/\\\s/g, ' ');
-    
-    try {
-      setLoading(true);
-      setMessage('Attempting to connect...');
-      
-      const response = await fetch('http://localhost:8000/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ db_path: cleanPath })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to initialize database');
-      }
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        localStorage.setItem('imageDatabasePath', cleanPath);
-        setIsConnected(true);
-        setMessage('Connected to database successfully');
-      } else {
-        setMessage('Failed to connect to database');
-      }
-    } catch (error) {
-      console.error('Connection error:', error);
-      setMessage(`Connection error: ${error.message}`);
-      setIsConnected(false);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleImageUpdate = async (imageId, updatedData) => {
-    if (!isConnected) return;
-    
-    try {
-      setLoading(true);
-      const response = await fetch(`http://localhost:8000/update/${imageId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updatedData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update image data');
-      }
-
-      setMessage('Image data updated successfully');
-      await fetchImages(); // Refresh the images list
-    } catch (error) {
-      setMessage('Error updating image: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDisconnect = () => {
-    localStorage.removeItem('imageDatabasePath');
-    setIsConnected(false);
-    setTotalImages(0);
-    setMessage('');
-    setDbPath('');
-    setImages([]);
-  };
+  const [status, setStatus] = useState({ message: '', type: 'info' });
+  
+  // Get everything we need from context
+  const { 
+    isConnected, 
+    loading,
+    refreshImages
+  } = useDb();
 
   const handleUrlSubmit = async (e) => {
     e.preventDefault();
-    if (!url || !isConnected) return;
-
-    setLoading(true);
+    if (!url.trim()) return;
+  
     try {
-      const formData = new FormData();
-      formData.append('url', url);
-
-      const response = await fetch('http://localhost:8000/upload/url', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to upload image from URL');
-      }
-
-      const result = await response.json();
-      if (result.success) {
-        setMessage('Image saved successfully');
-        setUrl('');
-        await Promise.all([fetchStatus(), fetchImages()]);
-      } else {
-        setMessage(result.error || 'Failed to save image');
-      }
+      setStatus({ message: 'Uploading image...', type: 'info' });
+      await api.uploadImageUrl(url);
+      setUrl('');
+      setStatus({ message: 'Image uploaded successfully', type: 'success' });
+      await refreshImages();
     } catch (error) {
-      setMessage('Error: ' + error.message);
-    } finally {
-      setLoading(false);
+      setStatus({ 
+        message: `Upload failed: ${error.message}`, 
+        type: 'error' 
+      });
     }
   };
 
-  const handleDragEnter = useCallback((e) => {
+  const handleDrop = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-      setIsDragging(true);
-    }
-  }, []);
-
-  const handleDragLeave = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.target.classList.contains('dropzone')) {
-      setIsDragging(false);
-    }
-  }, []);
-
-  const handleDragOver = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  const handleDrop = useCallback(async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!isConnected) return;
-    
     setIsDragging(false);
+    
     const files = Array.from(e.dataTransfer.files).filter(file => 
       file.type.startsWith('image/')
     );
 
     if (files.length === 0) {
-      setMessage('Please drop image files only');
+      setStatus({ message: 'No valid image files found', type: 'error' });
       return;
     }
-    
-    setLoading(true);
+
     let successCount = 0;
     let failCount = 0;
-    
-    try {
-      for (const file of files) {
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        const response = await fetch('http://localhost:8000/upload/file', {
-          method: 'POST',
-          body: formData,
-        });
-        
-        if (!response.ok) {
-          failCount++;
-          continue;
-        }
-        
-        const result = await response.json();
-        if (result.success) {
-          successCount++;
-        } else {
-          failCount++;
-        }
+
+    setStatus({ message: 'Uploading images...', type: 'info' });
+
+    for (const file of files) {
+      try {
+        await api.uploadImageFile(file);
+        successCount++;
+      } catch (error) {
+        console.error('Failed to upload file:', file.name, error);
+        failCount++;
       }
-      
-      setMessage(`Upload complete: ${successCount} succeeded, ${failCount} failed`);
-      await Promise.all([fetchStatus(), fetchImages()]);
-    } catch (error) {
-      setMessage('Error: ' + error.message);
-    } finally {
-      setLoading(false);
     }
-  }, [isConnected, fetchStatus, fetchImages]);
+
+    await refreshImages();
+    
+    if (failCount === 0) {
+      setStatus({ 
+        message: `Successfully uploaded ${successCount} image${successCount !== 1 ? 's' : ''}`, 
+        type: 'success' 
+      });
+    } else {
+      setStatus({ 
+        message: `Upload complete: ${successCount} succeeded, ${failCount} failed`, 
+        type: 'warning' 
+      });
+    }
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.target.classList.contains('dropzone')) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
 
   return (
     <div className="w-full px-4">
       <div className="max-w-7xl mx-auto flex gap-8">
-        {/* Configuration section with fixed width */}
         <div className="w-80 flex-none space-y-6">
-          <DatabaseConnection 
-            dbPath={dbPath}
-            setDbPath={setDbPath}
-            isConnected={isConnected}
-            loading={loading}
-            onConnect={initializeDatabase}
-            onDisconnect={handleDisconnect}
-            totalImages={totalImages}
-          />
+          <DatabaseConnection />
 
           {isConnected && (
             <>
@@ -285,15 +127,14 @@ function ImageCollector() {
             </>
           )}
 
-          <StatusMessage message={message} />
+          <StatusMessage 
+            message={status.message}
+            type={status.type}
+          />
         </div>
 
-        {/* Database viewer section that takes remaining space */}
         <div className="flex-1">
-          <DatabaseViewer 
-            images={images} 
-            onUpdateImage={handleImageUpdate}
-          />
+          <DatabaseViewer />
         </div>
       </div>
     </div>
