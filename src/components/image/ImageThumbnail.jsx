@@ -50,7 +50,7 @@ function ImageThumbnail({
     {image.thumbnail ? (
         <img
         src={image.thumbnail}
-        alt="Business card"
+        alt="Contact info card"
         className="object-contain w-full h-full rounded cursor-pointer"
         onDoubleClick={handleImageClick}
         />
