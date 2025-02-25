@@ -1,78 +1,16 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Any, Dict, TypeVar, Generic, List, Optional
 import sqlite3
 import os
-import aiohttp
-from datetime import datetime
 import hashlib
+from datetime import datetime
+from typing import Any, Dict
 from PIL import Image
 from io import BytesIO
 import base64
-from dotenv import load_dotenv
+import aiohttp
+import logging
+from .models import ContactInfo, ServerResponse
 
-# Load environment variables from .env file
-load_dotenv()
-
-# Create FastAPI app instance
-app = FastAPI()
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Define a generic type for the data field
-T = TypeVar('T')
-
-class ServerResponse(BaseModel, Generic[T]):
-    success: bool
-    data: T
-    error: Optional[str] = None
-    timestamp: str
-
-class ContactInfo(BaseModel):
-    name: Dict[str, Optional[str]]
-    work: Dict[str, Optional[str]]
-    contact: Dict[str, List[str]]
-    social: List[Dict[str, str]]
-    notes: Optional[str] = None
-
-class PostalAddress(BaseModel):
-    street: Optional[str] = None
-    sub_locality: Optional[str] = None
-    city: Optional[str] = None
-    sub_administrative_area: Optional[str] = None
-    state: Optional[str] = None
-    postal_code: Optional[str] = None
-    country: Optional[str] = None
-    iso_country_code: Optional[str] = None
-
-class SocialProfile(BaseModel):
-    service: str
-    url: Optional[str] = None
-    username: str
-
-class DbPath(BaseModel):
-    db_path: str
-
-class ImageUpdate(BaseModel):
-    name_prefix: Optional[str] = None
-    given_name: Optional[str] = None
-    middle_name: Optional[str] = None
-    family_name: Optional[str] = None
-    name_suffix: Optional[str] = None
-    job_title: Optional[str] = None
-    department: Optional[str] = None
-    organization_name: Optional[str] = None
-    phone_numbers: Optional[List[str]] = None
-    email_addresses: Optional[List[str]] = None
-    url_addresses: Optional[List[str]] = None
+logger = logging.getLogger("image-db")
 
 class ImageDatabase:
     def __init__(self, db_path):
@@ -160,7 +98,7 @@ class ImageDatabase:
                     FOREIGN KEY(image_id) REFERENCES images(id)
                 )
             """)
-
+        
     async def save_image(self, image_data: bytes, metadata: dict = None) -> bool:
         if metadata is None:
             metadata = {}
@@ -238,15 +176,16 @@ class ImageDatabase:
                     return True
                     
                 except sqlite3.IntegrityError as e:
-                    print(f"Database integrity error: {e}")
+                    logger.info(f"Database integrity error: {e}")
                     return False
                 except Exception as e:
-                    print(f"Database insertion error: {e}")
+                    logger.info(f"Database insertion error: {e}")
                     return False
                     
         except Exception as e:
-            print(f"Error in save_image: {e}")
+            logger.info(f"Error in save_image: {e}")
             return False
+
         
     def update_image(self, image_id: int, update_data: Dict[str, Any]) -> bool:
         try:
@@ -319,14 +258,14 @@ class ImageDatabase:
                 
                 return True
         except Exception as e:
-            print(f"Error updating image: {e}")
+            logger.info(f"Error updating image: {e}")
             return False
 
-    # Then update the extract_contact_info method in ImageDatabase class
+        
     async def extract_contact_info(self, image_id: int) -> dict:
         """Extract contact information from an image using the LLM server."""
         try:
-            print(f"Starting extraction for image_id: {image_id}")
+            logger.info(f"Starting extraction for image_id: {image_id}")
             
             # Get the image data and filename from the database
             with sqlite3.connect(self.db_path) as conn:
@@ -334,15 +273,15 @@ class ImageDatabase:
                 cursor.execute("SELECT image_data, filename FROM images WHERE id = ?", (image_id,))
                 result = cursor.fetchone()
                 if not result:
-                    print(f"Image not found for id: {image_id}")
+                    logger.info(f"Image not found for id: {image_id}")
                     raise Exception("Image not found")
                 
                 image_data, filename = result
-                print(f"Found image with filename: {filename}")
+                logger.info(f"Found image with filename: {filename}")
                 
             # Convert image data to base64
             base64_image = base64.b64encode(image_data).decode('utf-8')
-            print("Successfully converted image to base64")
+            logger.info("Successfully converted image to base64")
             
             # Prepare the request body
             request_body = {
@@ -361,36 +300,36 @@ class ImageDatabase:
             }
             
             async with aiohttp.ClientSession() as session:
-                print("Making request to LLM server...")
+                logger.info("Making request to LLM server...")
                 async with session.post(
                     "https://api.appsimple.io/v1/extract-contact",
                     json=request_body,
                     headers=headers,
                     timeout=60
                 ) as response:
-                    print(f"Received response with status: {response.status}")
+                    logger.info(f"Received response with status: {response.status}")
                     if not 200 <= response.status < 300:
                         error_text = await response.text()
-                        print(f"HTTP error response: {error_text}")
+                        logger.info(f"HTTP error response: {error_text}")
                         raise Exception(f"LLM server HTTP error {response.status}: {error_text}")
                     
                     raw_response = await response.json()
-                    print("Raw server response:", raw_response)
+                    logger.info("Raw server response:", raw_response)
                     
                     try:
                         server_response = ServerResponse[ContactInfo].model_validate(raw_response)
-                        print("Successfully validated server response")
+                        logger.info("Successfully validated server response")
                     except Exception as validation_error:
-                        print(f"Validation error: {validation_error}")
+                        logger.info(f"Validation error: {validation_error}")
                         raise
                     
                     if not server_response.success:
                         error_msg = server_response.error or 'Unknown error'
-                        print(f"Server indicated failure: {error_msg}")
+                        logger.info(f"Server indicated failure: {error_msg}")
                         raise Exception(f"LLM server error: {error_msg}")
                     
                     contact_info = server_response.data
-                    print("Contact info after validation:", contact_info)
+                    logger.info("Contact info after validation:", contact_info)
                     
                     # Map the nested data to our database structure
                     try:
@@ -407,231 +346,20 @@ class ImageDatabase:
                             "phone_numbers": contact_info.contact.get('phone_numbers', []),
                             "url_addresses": contact_info.contact.get('url_addresses', [])
                         }
-                        print("Successfully mapped contact info to database structure")
+                        logger.info("Successfully mapped contact info to database structure")
                     except Exception as mapping_error:
-                        print(f"Error during mapping: {mapping_error}")
+                        logger.info(f"Error during mapping: {mapping_error}")
                         raise
                     
                     # Update the database with extracted information
-                    print("Updating database with mapped info")
+                    logger.info("Updating database with mapped info")
                     self.update_image(image_id, mapped_info)
                     return mapped_info
                         
         except Exception as e:
-            print(f"Error extracting contact info: {e}")
-            print(f"Error type: {type(e)}")
+            logger.info(f"Error extracting contact info: {e}")
+            logger.info(f"Error type: {type(e)}")
             import traceback
-            print("Full traceback:")
-            print(traceback.format_exc())
+            logger.info("Full traceback:")
+            logger.info(traceback.format_exc())
             raise
-
-# Global database instance
-image_db = None
-
-@app.post("/init")
-async def init_database(db_config: DbPath):
-    global image_db
-    try:
-        image_db = ImageDatabase(db_config.db_path)
-        return {"success": True, "message": "Database initialized successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/upload/file")
-async def upload_file(file: UploadFile = File(...)):
-    if not image_db:
-        raise HTTPException(status_code=400, detail="Database not initialized")
-    
-    contents = await file.read()
-    success = await image_db.save_image(contents, metadata={'filename': file.filename})
-    return {"success": success}
-
-@app.post("/upload/url")
-async def upload_url(url: str = Form(...)):
-    if not image_db:
-        raise HTTPException(status_code=400, detail="Database not initialized")
-    
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            if response.status == 200:
-                image_data = await response.read()
-                success = await image_db.save_image(image_data, {'url_addresses': [url]})
-                return {"success": success}
-            return {"success": False, "error": "Failed to fetch image"}
-
-@app.get("/status")
-async def get_status():
-    if not image_db:
-        raise HTTPException(status_code=400, detail="Database not initialized")
-    
-    with sqlite3.connect(image_db.db_path) as conn:
-        count = conn.execute("SELECT COUNT(*) FROM images").fetchone()[0]
-    return {"total_images": count}
-
-@app.get("/images")
-async def get_images():
-    print("Fetching images from database")
-
-    if not image_db:
-        raise HTTPException(status_code=400, detail="Database not initialized")
-    
-    with sqlite3.connect(image_db.db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        # Get main image data
-        cursor.execute("""
-            SELECT * FROM images 
-            ORDER BY date_added DESC
-        """)
-        rows = cursor.fetchall()
-        print(f"Found {len(rows)} images in database")
-
-        images = []
-        for row in rows:
-            try:
-                image_id = row['id']
-                print(f"Processing image ID: {image_id}")
-                
-                # Create image_dict first
-                image_dict = dict(row)
-                # Remove binary data early to avoid printing it
-                image_data = image_dict.pop('image_data')
-                print(f"Image data type: {type(image_data)}")
-                print(f"Image metadata: {image_dict}")
-                
-                # Create thumbnail with better error handling
-                thumbnail = None
-                if image_data:
-                    try:
-                        # Safely open the image
-                        img_buffer = BytesIO(image_data)
-                        img = Image.open(img_buffer)
-                        print(f"Image format: {img.format}, Size: {img.size}")
-                        
-                        # Create thumbnail
-                        img.thumbnail((200, 200))
-                        thumb_buffer = BytesIO()
-                        img.save(thumb_buffer, format=img.format or 'JPEG')
-                        thumbnail = f"data:image/{(img.format or 'jpeg').lower()};base64,{base64.b64encode(thumb_buffer.getvalue()).decode()}"
-                        print("Thumbnail created successfully")
-                    except Exception as e:
-                        print(f"Thumbnail creation error: {str(e)}")
-                        # Use a placeholder instead of failing
-                        thumbnail = None
-                
-                # Get phone numbers
-                cursor.execute("SELECT phone_number FROM phone_numbers WHERE image_id = ?", (image_id,))
-                phone_numbers = [r[0] for r in cursor.fetchall()]
-                
-                # Get email addresses
-                cursor.execute("SELECT email_address FROM email_addresses WHERE image_id = ?", (image_id,))
-                email_addresses = [r[0] for r in cursor.fetchall()]
-                
-                # Get postal addresses
-                cursor.execute("SELECT * FROM postal_addresses WHERE image_id = ?", (image_id,))
-                postal_addresses = [dict(r) for r in cursor.fetchall()]
-                
-                # Get URLs
-                cursor.execute("SELECT url FROM url_addresses WHERE image_id = ?", (image_id,))
-                url_addresses = [r[0] for r in cursor.fetchall()]
-                
-                # Get social profiles
-                cursor.execute("SELECT service, url, username FROM social_profiles WHERE image_id = ?", (image_id,))
-                social_profiles = [dict(zip(['service', 'url', 'username'], r)) for r in cursor.fetchall()]
-
-                # Update the image dict with all data
-                image_dict.update({
-                    'thumbnail': thumbnail,
-                    'phone_numbers': phone_numbers,
-                    'email_addresses': email_addresses,
-                    'postal_addresses': postal_addresses,
-                    'url_addresses': url_addresses,
-                    'social_profiles': social_profiles
-                })
-                
-                # Add to images list
-                images.append(image_dict)
-                print(f"Successfully added image ID: {image_id} to response")
-                
-            except Exception as e:
-                print(f"Error processing image: {str(e)}")
-                # Continue with next image instead of failing completely
-                continue
-
-        print(f"Returning {len(images)} images")
-        return {"images": images}
-
-@app.put("/update/{image_id}")
-async def update_image_data(image_id: int, update_data: ImageUpdate):
-    if not image_db:
-        raise HTTPException(status_code=400, detail="Database not initialized")
-    
-    success = image_db.update_image(image_id, update_data.model_dump(exclude_unset=True))
-    
-    if success:
-        return {"success": True, "message": "Image updated successfully"}
-    else:
-        raise HTTPException(status_code=500, detail="Failed to update image")
-    
-@app.post("/extract/{image_id}")
-async def extract_contact(image_id: int):
-    if not image_db:
-        raise HTTPException(status_code=400, detail="Database not initialized")
-    
-    try:
-        contact_info = await image_db.extract_contact_info(image_id)
-        return {"success": True, "data": contact_info}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/image/{image_id}")
-async def delete_image(image_id: int):
-    if not image_db:
-        raise HTTPException(status_code=400, detail="Database not initialized")
-    
-    try:
-        with sqlite3.connect(image_db.db_path) as conn:
-            cursor = conn.cursor()
-            
-            # Delete related records first
-            cursor.execute("DELETE FROM phone_numbers WHERE image_id = ?", (image_id,))
-            cursor.execute("DELETE FROM email_addresses WHERE image_id = ?", (image_id,))
-            cursor.execute("DELETE FROM postal_addresses WHERE image_id = ?", (image_id,))
-            cursor.execute("DELETE FROM url_addresses WHERE image_id = ?", (image_id,))
-            cursor.execute("DELETE FROM social_profiles WHERE image_id = ?", (image_id,))
-            
-            # Delete the main image record
-            cursor.execute("DELETE FROM images WHERE id = ?", (image_id,))
-            
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Image not found")
-                
-            return {"success": True, "message": "Image deleted successfully"}
-            
-    except sqlite3.Error as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    
-@app.get("/image/{image_id}")
-async def get_full_image(image_id: int):
-    if not image_db:
-        raise HTTPException(status_code=400, detail="Database not initialized")
-    
-    with sqlite3.connect(image_db.db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT image_data FROM images WHERE id = ?", (image_id,))
-        result = cursor.fetchone()
-        
-        if not result:
-            raise HTTPException(status_code=404, detail="Image not found")
-        
-        image_data = result[0]
-        if image_data:
-            try:
-                # Convert to base64
-                image_base64 = base64.b64encode(image_data).decode('utf-8')
-                return {"image_data": image_base64}
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
-        else:
-            raise HTTPException(status_code=404, detail="Image data not found")
