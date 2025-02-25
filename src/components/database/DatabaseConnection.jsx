@@ -19,6 +19,98 @@ function DatabaseConnection() {
     await connect();
   }, [connect]);
 
+  const refreshImages = useCallback(async () => {
+    console.log(`Refreshing images. Connected: ${isConnected}, Path: ${dbPath}`);
+    
+    // Always try to refresh, even if we think we're not connected
+    try {
+      console.log("Fetching images from API...");
+      const response = await api.fetchImages();
+      console.log("API response:", response);
+      
+      if (!response) {
+        console.error("No response from API");
+        await tryReconnect();
+        return;
+      } 
+      
+      if (!response.images) {
+        console.error("Response missing 'images' property:", response);
+        await tryReconnect();
+        return;
+      } 
+      
+      if (!Array.isArray(response.images)) {
+        console.error("Images is not an array:", response.images);
+        await tryReconnect();
+        return;
+      }
+      
+      console.log(`Received ${response.images.length} images from API`);
+      
+      // Print details about each image
+      response.images.forEach((img, index) => {
+        console.log(`Image ${index}: ID=${img.id}, Has thumbnail: ${img.thumbnail ? 'Yes' : 'No'}`);
+      });
+      
+      // Update state with the images we received
+      setImages(response.images || []);
+      
+      // If we weren't connected before, we are now
+      if (!isConnected) {
+        setIsConnected(true);
+        console.log("Auto-recovered connection state");
+      }
+      
+      // Check status separately
+      console.log("Fetching database status...");
+      const statusResponse = await api.getStatus();
+      console.log("Status response:", statusResponse);
+      setTotalImages(statusResponse.total_images);
+      
+      // Log any mismatch
+      console.log(`Mismatch: total_images=${statusResponse.total_images}, images.length=${response.images.length}`);
+    } catch (error) {
+      console.error("Error refreshing images:", error);
+      handleError(error, 'refresh');
+      
+      // If we get an error, try to reconnect
+      await tryReconnect();
+    }
+  }, [dbPath]);
+
+  // Add this new function to automatically attempt reconnection
+  const tryReconnect = useCallback(async () => {
+    if (!dbPath) {
+      console.error("No database path available for reconnection");
+      return;
+    }
+    
+    // Only try reconnecting if we're not already connected
+    if (!isConnected) {
+      try {
+        console.log("Attempting to automatically reconnect to the database...");
+        await api.initializeDatabase(dbPath);
+        setIsConnected(true);
+        console.log("Auto-reconnection successful");
+      } catch (error) {
+        console.error("Auto-reconnection failed:", error);
+        setIsConnected(false);
+      }
+    }
+  }, [dbPath, isConnected]);
+
+  // Add the tryReconnect function to the useEffect below
+  // This ensures we try to connect when the component mounts
+  useEffect(() => {
+    const savedPath = localStorage.getItem('imageDatabasePath');
+    if (savedPath) {
+      setDbPath(savedPath);
+      console.log(`Retrieved saved database path: ${savedPath}`);
+      tryReconnect();
+    }
+  }, [tryReconnect]);
+
   return (
     <div className="bg-gray-800 p-4 rounded-lg shadow-lg border border-gray-700">
       <h2 className="text-xl font-bold text-gray-200 mb-4">Database Connection</h2>
