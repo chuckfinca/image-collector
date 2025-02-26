@@ -279,3 +279,70 @@ async def get_full_image(image_id: int):
                 raise HTTPException(status_code=500, detail=str(e))
         else:
             raise HTTPException(status_code=404, detail="Image data not found")
+        
+@router.post("/upload/file")
+async def upload_image_file(file: UploadFile = File(...)):
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    logger.info(f"Received file upload: {file.filename}")
+    
+    try:
+        # Read file content
+        contents = await file.read()
+        
+        # Get file metadata
+        metadata = {
+            'filename': file.filename
+        }
+        
+        # Save to database
+        success = await image_db.save_image(contents, metadata)
+        
+        if success:
+            logger.info(f"Successfully saved image: {file.filename}")
+            return {"success": True, "message": "Image uploaded successfully"}
+        else:
+            logger.warning(f"Failed to save image: {file.filename}")
+            raise HTTPException(status_code=400, detail="Failed to save image (possibly a duplicate)")
+            
+    except Exception as e:
+        logger.error(f"Error uploading file: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.post("/upload/url")
+async def upload_image_url(url: str = Form(...)):
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    logger.info(f"Received URL upload: {url}")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    raise HTTPException(status_code=400, detail=f"Failed to fetch image from URL (status: {response.status})")
+                
+                # Read image content
+                contents = await response.read()
+                
+                # Extract filename from URL
+                filename = url.split('/')[-1].split('?')[0] or "image.jpg"
+                
+                # Save to database
+                metadata = {
+                    'filename': filename
+                }
+                
+                success = await image_db.save_image(contents, metadata)
+                
+                if success:
+                    logger.info(f"Successfully saved image from URL: {url}")
+                    return {"success": True, "message": "Image uploaded successfully"}
+                else:
+                    logger.warning(f"Failed to save image from URL: {url}")
+                    raise HTTPException(status_code=400, detail="Failed to save image (possibly a duplicate)")
+    
+    except Exception as e:
+        logger.error(f"Error uploading from URL: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
