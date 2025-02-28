@@ -3,6 +3,7 @@ import { useDb } from '../../context/DatabaseContext';
 import { useImageEditor } from '../../hooks/useImageEditor';
 import ImageViewModal from '../image/ImageViewModal';
 import ImageThumbnail from '../image/ImageThumbnail';
+import PostalAddressSection from '../address/PostalAddressSection';
 
 function DatabaseViewer() {
   const { 
@@ -101,6 +102,7 @@ function DatabaseViewer() {
               <th className="p-3 text-left text-gray-200 align-top font-medium text-sm">Work Info</th>
               <th className="p-3 text-left text-gray-200 align-top font-medium text-sm">Contact Info</th>
               <th className="p-3 text-left text-gray-200 align-top font-medium text-sm">Online Presence</th>
+              <th className="p-3 text-left text-gray-200 align-top font-medium text-sm">Addresses</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-700">
@@ -139,6 +141,14 @@ function DatabaseViewer() {
                   <div className="space-y-2">
                     {renderArrayField(image, 'url_addresses', 'URLs (one per line)')}
                   </div>
+                </td>
+                <td className="p-3 align-top">
+                  <PostalAddressSection 
+                    image={image}
+                    editMode={editMode}
+                    editableImages={editableImages}
+                    handleInputChange={handleInputChange}
+                  />
                 </td>
               </tr>
             ))}

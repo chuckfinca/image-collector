@@ -1,4 +1,4 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, Field, validator
 from typing import Any, Dict, TypeVar, Generic, List, Optional
 import re
 
@@ -11,13 +11,6 @@ class ServerResponse(BaseModel, Generic[T]):
     error: Optional[str] = None
     timestamp: str
 
-class ContactInfo(BaseModel):
-    name: Dict[str, Optional[str]]
-    work: Dict[str, Optional[str]]
-    contact: Dict[str, List[str]]
-    social: List[Dict[str, str]]
-    notes: Optional[str] = None
-
 class PostalAddress(BaseModel):
     street: Optional[str] = None
     sub_locality: Optional[str] = None
@@ -27,6 +20,19 @@ class PostalAddress(BaseModel):
     postal_code: Optional[str] = None
     country: Optional[str] = None
     iso_country_code: Optional[str] = None
+
+class ContactData(BaseModel):
+    email_addresses: List[str] = Field(default_factory=list)
+    phone_numbers: List[str] = Field(default_factory=list)
+    url_addresses: List[str] = Field(default_factory=list)
+    postal_addresses: List[PostalAddress] = Field(default_factory=list)
+
+class ContactInfo(BaseModel):
+    name: Dict[str, Optional[str]]
+    work: Dict[str, Optional[str]]
+    contact: ContactData
+    social: List[Dict[str, str]]
+    notes: Optional[str] = None
 
 class SocialProfile(BaseModel):
     service: str
@@ -54,6 +60,7 @@ class ImageUpdate(BaseModel):
     phone_numbers: Optional[List[str]] = None
     email_addresses: Optional[List[str]] = None
     url_addresses: Optional[List[str]] = None
+    postal_addresses: Optional[List[Dict[str, Optional[str]]]] = None
     
     @validator('email_addresses', each_item=True)
     def validate_email(cls, v):

@@ -68,54 +68,54 @@ export const DatabaseProvider = ({ children }) => {
   }, [isConnected, dbPath]);
 
   // Database connection management
-  
-const connect = useCallback(async () => {
-  if (!dbPath) {
-    console.error("No database path provided");
-    setError('Please enter a database path');
-    return;
-  }
-
-  try {
-    console.log(`Attempting to connect to database at: ${dbPath}`);
-    setLoading(true);
-    setError(null);
-    const cleanPath = dbPath.replace(/\\\s/g, ' ');
-    console.log(`Using cleaned path: ${cleanPath}`);
-    
-    const response = await api.initializeDatabase(cleanPath);
-    console.log("Database initialization response:", response);
-    
-    localStorage.setItem('imageDatabasePath', cleanPath);
-    console.log("Saved path to localStorage");
-    
-    // Set connection status
-    setIsConnected(true);
-    console.log("Set connection status to connected");
-    
-    // Instead of calling refreshImages which depends on state,
-    // perform the refresh logic directly here
-    console.log("Refreshing images directly after connection...");
-    try {
-      const imagesResponse = await api.fetchImages();
-      console.log("Direct API response:", imagesResponse);
-      setImages(imagesResponse.images || []);
-      
-      const statusResponse = await api.getStatus();
-      console.log("Direct status response:", statusResponse);
-      setTotalImages(statusResponse.total_images);
-    } catch (error) {
-      console.error("Error during direct refresh:", error);
-      handleError(error, 'refresh');
+  const connect = useCallback(async () => {
+    if (!dbPath) {
+      console.error("No database path provided");
+      setError('Please enter a database path');
+      return;
     }
-  } catch (error) {
-    console.error(`Connection error: ${error.message}`);
-    handleError(error, 'connect');
-    setIsConnected(false);
-  } finally {
-    setLoading(false);
-  }
-}, [dbPath, handleError]);
+  
+    try {
+      console.log(`Attempting to connect to database at: ${dbPath}`);
+      setLoading(true);
+      setError(null);
+      const cleanPath = dbPath.replace(/\\\s/g, ' ');
+      console.log(`Using cleaned path: ${cleanPath}`);
+      
+      const response = await api.initializeDatabase(cleanPath);
+      console.log("Database initialization response:", response);
+      
+      localStorage.setItem('imageDatabasePath', cleanPath);
+      console.log("Saved path to localStorage");
+      
+      // Set connection status
+      setIsConnected(true);
+      console.log("Set connection status to connected");
+      
+      // Instead of calling refreshImages which depends on state,
+      // perform the refresh logic directly here
+      console.log("Refreshing images directly after connection...");
+      try {
+        const imagesResponse = await api.fetchImages();
+        console.log("Direct API response:", imagesResponse);
+        setImages(imagesResponse.images || []);
+        
+        const statusResponse = await api.getStatus();
+        console.log("Direct status response:", statusResponse);
+        setTotalImages(statusResponse.total_images);
+      } catch (error) {
+        console.error("Error during direct refresh:", error);
+        handleError(error, 'refresh');
+        // Do NOT attempt reconnection here since we just connected
+      }
+    } catch (error) {
+      console.error(`Connection error: ${error.message}`);
+      handleError(error, 'connect');
+      setIsConnected(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [dbPath, handleError]);
 
   const disconnect = useCallback(() => {
     localStorage.removeItem('imageDatabasePath');

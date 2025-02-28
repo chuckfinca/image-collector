@@ -255,6 +255,28 @@ class ImageDatabase:
                                 "INSERT INTO url_addresses (image_id, url) VALUES (?, ?)",
                                 (image_id, url.strip())
                             )
+                # Update postal addresses
+                if 'postal_addresses' in update_data:
+                    cursor.execute("DELETE FROM postal_addresses WHERE image_id = ?", (image_id,))
+                    for address in (update_data['postal_addresses'] or []):
+                        if any(value for key, value in address.items() if key not in ['id', 'image_id'] and value):
+                            cursor.execute("""
+                                INSERT INTO postal_addresses (
+                                    image_id, street, sub_locality, city,
+                                    sub_administrative_area, state, postal_code,
+                                    country, iso_country_code
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                image_id, 
+                                address.get('street', ''), 
+                                address.get('sub_locality', ''),
+                                address.get('city', ''), 
+                                address.get('sub_administrative_area', ''),
+                                address.get('state', ''), 
+                                address.get('postal_code', ''),
+                                address.get('country', ''), 
+                                address.get('iso_country_code', '')
+                            ))
                 
                 return True
         except Exception as e:
@@ -314,7 +336,7 @@ class ImageDatabase:
                         raise Exception(f"LLM server HTTP error {response.status}: {error_text}")
                     
                     raw_response = await response.json()
-                    logger.info("Raw server response:", raw_response)
+                    logger.info(f"Raw server response: {raw_response}")
                     
                     try:
                         server_response = ServerResponse[ContactInfo].model_validate(raw_response)
@@ -322,17 +344,15 @@ class ImageDatabase:
                     except Exception as validation_error:
                         logger.info(f"Validation error: {validation_error}")
                         raise
-                    
-                    if not server_response.success:
-                        error_msg = server_response.error or 'Unknown error'
-                        logger.info(f"Server indicated failure: {error_msg}")
-                        raise Exception(f"LLM server error: {error_msg}")
-                    
-                    contact_info = server_response.data
-                    logger.info("Contact info after validation:", contact_info)
-                    
-                    # Map the nested data to our database structure
-                    try:
+                        
+                        if not server_response.success:
+                            error_msg = server_response.error or 'Unknown error'
+                            logger.info(f"Server indicated failure: {error_msg}")
+                            raise Exception(f"LLM server error: {error_msg}")
+                        
+                        contact_info = server_response.data
+                        
+                        # Map the nested data to our database structure
                         mapped_info = {
                             "name_prefix": contact_info.name.get('prefix', ''),
                             "given_name": contact_info.name.get('given_name', ''),
@@ -342,19 +362,38 @@ class ImageDatabase:
                             "job_title": contact_info.work.get('job_title', ''),
                             "department": contact_info.work.get('department', ''),
                             "organization_name": contact_info.work.get('organization_name', ''),
-                            "email_addresses": contact_info.contact.get('email_addresses', []),
-                            "phone_numbers": contact_info.contact.get('phone_numbers', []),
-                            "url_addresses": contact_info.contact.get('url_addresses', [])
+                            "email_addresses": contact_info.contact.email_addresses,
+                            "phone_numbers": contact_info.contact.phone_numbers,
+                            "url_addresses": contact_info.contact.url_addresses
                         }
+                        
+                        mapped_info["postal_addresses"] = []
+                        if contact_info.contact.postal_addresses:
+                            for addr in contact_info.contact.postal_addresses:
+                                # Map each PostalAddress object to a dictionary with the fields from our database schema
+                                address_dict = {
+                                    'street': addr.street,
+                                    'city': addr.city,
+                                    'sub_locality': '',  # These might not be present in the extraction
+                                    'sub_administrative_area': '',
+                                    'state': addr.state,
+                                    'postal_code': addr.postal_code,
+                                    'country': addr.country,
+                                    'iso_country_code': ''
+                                }
+                                mapped_info["postal_addresses"].append(address_dict)
+                        
                         logger.info("Successfully mapped contact info to database structure")
-                    except Exception as mapping_error:
-                        logger.info(f"Error during mapping: {mapping_error}")
+                        logger.info(f"Mapped info: {mapped_info}")
+                        
+                        # Update the database with extracted information
+                        logger.info("Updating database with mapped info")
+                        self.update_image(image_id, mapped_info)
+                        return mapped_info
+                        
+                    except Exception as validation_error:
+                        logger.info(f"Validation error: {validation_error}")
                         raise
-                    
-                    # Update the database with extracted information
-                    logger.info("Updating database with mapped info")
-                    self.update_image(image_id, mapped_info)
-                    return mapped_info
                         
         except Exception as e:
             logger.info(f"Error extracting contact info: {e}")

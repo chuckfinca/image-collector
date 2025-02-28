@@ -79,37 +79,31 @@ function DatabaseConnection() {
     }
   }, [dbPath]);
 
-  // Add this new function to automatically attempt reconnection
+  // Modified to only attempt reconnection when already in connected state
   const tryReconnect = useCallback(async () => {
-    if (!dbPath) {
-      console.error("No database path available for reconnection");
+    if (!dbPath || !isConnected) {
+      console.log("Not attempting auto-reconnection - not in connected state or no path available");
       return;
     }
     
-    // Only try reconnecting if we're not already connected
-    if (!isConnected) {
-      try {
-        console.log("Attempting to automatically reconnect to the database...");
-        await api.initializeDatabase(dbPath);
-        setIsConnected(true);
-        console.log("Auto-reconnection successful");
-      } catch (error) {
-        console.error("Auto-reconnection failed:", error);
-        setIsConnected(false);
-      }
+    try {
+      console.log("Attempting to automatically reconnect to the database...");
+      await api.initializeDatabase(dbPath);
+      console.log("Auto-reconnection successful");
+    } catch (error) {
+      console.error("Auto-reconnection failed:", error);
     }
   }, [dbPath, isConnected]);
 
-  // Add the tryReconnect function to the useEffect below
-  // This ensures we try to connect when the component mounts
+  // Modified to not automatically trigger reconnection on mount
   useEffect(() => {
     const savedPath = localStorage.getItem('imageDatabasePath');
     if (savedPath) {
       setDbPath(savedPath);
       console.log(`Retrieved saved database path: ${savedPath}`);
-      tryReconnect();
+      // Don't automatically attempt reconnection here
     }
-  }, [tryReconnect]);
+  }, [setDbPath]); // Removed tryReconnect from dependency array
 
   return (
     <div className="bg-gray-800 p-4 rounded-lg shadow-lg border border-gray-700">
