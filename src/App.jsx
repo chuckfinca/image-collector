@@ -1,14 +1,7 @@
-import { DatabaseProvider } from './context/DatabaseContext'
-import ImageCollector from './components/ImageCollector'
+import AppLayout from './components/AppLayout'
 
 function App() {
-  return (
-    <DatabaseProvider>
-      <main className="w-full">
-        <ImageCollector />
-      </main>
-    </DatabaseProvider>
-  )
+  return <AppLayout />
 }
 
 export default App

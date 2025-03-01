@@ -9,6 +9,7 @@ function DatabaseViewer() {
   const { 
     images,
     updateImage,
+    totalImages
   } = useDb();
 
   const {
@@ -80,7 +81,11 @@ function DatabaseViewer() {
       />
       
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold text-gray-200">Database Contents</h2>
+        <div className="flex items-baseline gap-2">
+          <h2 className="text-xl font-bold text-gray-200">Database Contents</h2>
+          <span className="text-sm text-gray-400">({totalImages} images)</span>
+        </div>
+        
         <button
           onClick={handleEditToggle}
           className={`px-4 py-2 rounded transition-colors ${

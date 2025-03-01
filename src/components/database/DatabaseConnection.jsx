@@ -1,132 +1,144 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useDb } from '../../context/DatabaseContext';
-import { api } from '../../services/api';
 
-function DatabaseConnection() {
+function DatabaseConnection({ compact = false, onStatusChange = () => {} }) {
   const { 
     dbPath, 
     setDbPath, 
     isConnected, 
     connect, 
     disconnect, 
-    loading, 
-    error, 
-    totalImages 
+    loading
   } = useDb();
+  
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef(null);
 
   const handleConnect = useCallback(async (e) => {
     e.preventDefault();
-    await connect();
-  }, [connect]);
-
-  const refreshImages = useCallback(async () => {
-    console.log(`Refreshing images. Connected: ${isConnected}, Path: ${dbPath}`);
-    
-    // Always try to refresh, even if we think we're not connected
-    try {
-      console.log("Fetching images from API...");
-      const response = await api.fetchImages();
-      console.log("API response:", response);
-      
-      if (!response) {
-        console.error("No response from API");
-        await tryReconnect();
-        return;
-      } 
-      
-      if (!response.images) {
-        console.error("Response missing 'images' property:", response);
-        await tryReconnect();
-        return;
-      } 
-      
-      if (!Array.isArray(response.images)) {
-        console.error("Images is not an array:", response.images);
-        await tryReconnect();
-        return;
-      }
-      
-      console.log(`Received ${response.images.length} images from API`);
-      
-      // Print details about each image
-      response.images.forEach((img, index) => {
-        console.log(`Image ${index}: ID=${img.id}, Has thumbnail: ${img.thumbnail ? 'Yes' : 'No'}`);
-      });
-      
-      // Update state with the images we received
-      setImages(response.images || []);
-      
-      // If we weren't connected before, we are now
-      if (!isConnected) {
-        setIsConnected(true);
-        console.log("Auto-recovered connection state");
-      }
-      
-      // Check status separately
-      console.log("Fetching database status...");
-      const statusResponse = await api.getStatus();
-      console.log("Status response:", statusResponse);
-      setTotalImages(statusResponse.total_images);
-      
-      // Log any mismatch
-      console.log(`Mismatch: total_images=${statusResponse.total_images}, images.length=${response.images.length}`);
-    } catch (error) {
-      console.error("Error refreshing images:", error);
-      handleError(error, 'refresh');
-      
-      // If we get an error, try to reconnect
-      await tryReconnect();
-    }
-  }, [dbPath]);
-
-  // Modified to only attempt reconnection when already in connected state
-  const tryReconnect = useCallback(async () => {
-    if (!dbPath || !isConnected) {
-      console.log("Not attempting auto-reconnection - not in connected state or no path available");
+    if (!dbPath.trim()) {
+      onStatusChange('Please enter a database path');
       return;
     }
     
     try {
-      console.log("Attempting to automatically reconnect to the database...");
-      await api.initializeDatabase(dbPath);
-      console.log("Auto-reconnection successful");
+      onStatusChange('Connecting...');
+      await connect();
+      onStatusChange('Connected successfully');
+      setTimeout(() => onStatusChange(''), 3000);
+      setShowDropdown(false);
     } catch (error) {
-      console.error("Auto-reconnection failed:", error);
+      onStatusChange(`Connection error: ${error.message}`);
     }
-  }, [dbPath, isConnected]);
+  }, [connect, dbPath, onStatusChange]);
 
-  // Modified to not automatically trigger reconnection on mount
+  const handleDisconnect = useCallback(() => {
+    disconnect();
+    onStatusChange('Disconnected from database');
+    setTimeout(() => onStatusChange(''), 3000);
+  }, [disconnect, onStatusChange]);
+
+  // Handle clicks outside the dropdown to close it
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+    }
+    
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Retrieve saved path on mount
   useEffect(() => {
     const savedPath = localStorage.getItem('imageDatabasePath');
     if (savedPath) {
       setDbPath(savedPath);
-      console.log(`Retrieved saved database path: ${savedPath}`);
-      // Don't automatically attempt reconnection here
     }
-  }, [setDbPath]); // Removed tryReconnect from dependency array
+  }, [setDbPath]);
 
+  if (compact) {
+    return (
+      <div className="relative" ref={dropdownRef}>
+        <button
+          onClick={() => setShowDropdown(!showDropdown)}
+          className={`px-4 py-1.5 rounded text-sm font-medium ${
+            isConnected 
+              ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' 
+              : 'bg-green-600 hover:bg-green-700 text-white'
+          }`}
+        >
+          {isConnected ? 'Database' : 'Connect DB'}
+        </button>
+        
+        {showDropdown && (
+          <div className="absolute left-0 mt-2 w-64 bg-gray-800 rounded-md shadow-lg z-10 border border-gray-700">
+            {isConnected ? (
+              <div className="p-4 space-y-4">
+                <div className="flex flex-col space-y-1">
+                  <span className="text-xs text-gray-400">Current database:</span>
+                  <span className="text-sm text-gray-300 break-all font-mono">{dbPath}</span>
+                </div>
+                
+                <button
+                  onClick={handleDisconnect}
+                  className="w-full py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleConnect} className="p-4 space-y-4">
+                <div className="space-y-2">
+                  <label className="block text-xs text-gray-300">
+                    Database Path
+                  </label>
+                  <input
+                    type="text"
+                    value={dbPath}
+                    onChange={(e) => setDbPath(e.target.value)}
+                    placeholder="Enter database path..."
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={loading}
+                  />
+                </div>
+                
+                <button
+                  type="submit"
+                  disabled={loading || !dbPath.trim()}
+                  className="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm disabled:opacity-50"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center">
+                      <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2" />
+                      Connecting...
+                    </span>
+                  ) : 'Connect'}
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Original full-size version for non-compact mode
   return (
     <div className="bg-gray-800 p-4 rounded-lg shadow-lg border border-gray-700">
       <h2 className="text-xl font-bold text-gray-200 mb-4">Database Connection</h2>
       
       {isConnected ? (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-green-400 text-sm flex items-center gap-2">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Connected
-            </span>
-            <span className="text-sm text-gray-400">{totalImages} images</span>
-          </div>
-          
           <div className="text-sm text-gray-300 truncate">
             Path: <span className="font-mono text-gray-400">{dbPath}</span>
           </div>
           
           <button
-            onClick={disconnect}
+            onClick={handleDisconnect}
             disabled={loading}
             className="w-full mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
           >
@@ -148,12 +160,6 @@ function DatabaseConnection() {
               disabled={loading}
             />
           </div>
-          
-          {error && (
-            <div className="text-red-400 text-sm">
-              {error}
-            </div>
-          )}
           
           <button
             type="submit"

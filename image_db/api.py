@@ -2,6 +2,7 @@
 
 import os
 import sqlite3
+import aiohttp
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 import logging
 from .models import DbPath, ImageUpdate
