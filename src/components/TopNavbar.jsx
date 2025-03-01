@@ -13,11 +13,8 @@ function TopNavbar() {
         {/* App title */}
         <h1 className="text-base font-bold text-white mr-4">Contact Collector</h1>
         
-        {/* Database Connection */}
-        <DatabaseConnection 
-          compact={true} 
-          onStatusChange={setStatusMessage}
-        />
+        {/* Database Connection - now directly in the navbar */}
+        <DatabaseConnection onStatusChange={setStatusMessage} />
         
         {/* Spacer */}
         <div className="flex-grow"></div>

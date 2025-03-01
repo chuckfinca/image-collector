@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { useDb } from '../../context/DatabaseContext';
 
-function DatabaseConnection({ compact = false, onStatusChange = () => {} }) {
+function DatabaseConnection({ onStatusChange = () => {} }) {
   const { 
     dbPath, 
     setDbPath, 
@@ -11,10 +11,7 @@ function DatabaseConnection({ compact = false, onStatusChange = () => {} }) {
     loading
   } = useDb();
   
-  const [showDropdown, setShowDropdown] = useState(false);
-  const dropdownRef = useRef(null);
-
-  const handleConnect = useCallback(async (e) => {
+  const handleConnect = async (e) => {
     e.preventDefault();
     if (!dbPath.trim()) {
       onStatusChange('Please enter a database path');
@@ -26,31 +23,16 @@ function DatabaseConnection({ compact = false, onStatusChange = () => {} }) {
       await connect();
       onStatusChange('Connected successfully');
       setTimeout(() => onStatusChange(''), 3000);
-      setShowDropdown(false);
     } catch (error) {
       onStatusChange(`Connection error: ${error.message}`);
     }
-  }, [connect, dbPath, onStatusChange]);
+  };
 
-  const handleDisconnect = useCallback(() => {
+  const handleDisconnect = () => {
     disconnect();
     onStatusChange('Disconnected from database');
     setTimeout(() => onStatusChange(''), 3000);
-  }, [disconnect, onStatusChange]);
-
-  // Handle clicks outside the dropdown to close it
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowDropdown(false);
-      }
-    }
-    
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
+  };
 
   // Retrieve saved path on mount
   useEffect(() => {
@@ -60,116 +42,38 @@ function DatabaseConnection({ compact = false, onStatusChange = () => {} }) {
     }
   }, [setDbPath]);
 
-  if (compact) {
-    return (
-      <div className="relative" ref={dropdownRef}>
-        <button
-          onClick={() => setShowDropdown(!showDropdown)}
-          className={`px-4 py-1.5 rounded text-sm font-medium ${
-            isConnected 
-              ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' 
-              : 'bg-green-600 hover:bg-green-700 text-white'
-          }`}
-        >
-          {isConnected ? 'Database' : 'Connect DB'}
-        </button>
-        
-        {showDropdown && (
-          <div className="absolute left-0 mt-2 w-64 bg-gray-800 rounded-md shadow-lg z-10 border border-gray-700">
-            {isConnected ? (
-              <div className="p-4 space-y-4">
-                <div className="flex flex-col space-y-1">
-                  <span className="text-xs text-gray-400">Current database:</span>
-                  <span className="text-sm text-gray-300 break-all font-mono">{dbPath}</span>
-                </div>
-                
-                <button
-                  onClick={handleDisconnect}
-                  className="w-full py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
-                >
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleConnect} className="p-4 space-y-4">
-                <div className="space-y-2">
-                  <label className="block text-xs text-gray-300">
-                    Database Path
-                  </label>
-                  <input
-                    type="text"
-                    value={dbPath}
-                    onChange={(e) => setDbPath(e.target.value)}
-                    placeholder="Enter database path..."
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={loading}
-                  />
-                </div>
-                
-                <button
-                  type="submit"
-                  disabled={loading || !dbPath.trim()}
-                  className="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm disabled:opacity-50"
-                >
-                  {loading ? (
-                    <span className="flex items-center justify-center">
-                      <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2" />
-                      Connecting...
-                    </span>
-                  ) : 'Connect'}
-                </button>
-              </form>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Original full-size version for non-compact mode
   return (
-    <div className="bg-gray-800 p-4 rounded-lg shadow-lg border border-gray-700">
-      <h2 className="text-xl font-bold text-gray-200 mb-4">Database Connection</h2>
-      
+    <div className="flex items-center">
       {isConnected ? (
-        <div className="space-y-4">
-          <div className="text-sm text-gray-300 truncate">
-            Path: <span className="font-mono text-gray-400">{dbPath}</span>
+        <button
+          onClick={handleDisconnect}
+          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-sm font-medium transition-colors relative group"
+        >
+          <span>Disconnect</span>
+          {/* Path tooltip on hover */}
+          <div className="absolute left-0 top-full mt-1 bg-gray-800 text-xs text-gray-300 p-2 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap">
+            from <span className="font-mono">{dbPath}</span>
           </div>
-          
-          <button
-            onClick={handleDisconnect}
-            disabled={loading}
-            className="w-full mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
-          >
-            Disconnect
-          </button>
-        </div>
+        </button>
       ) : (
-        <form onSubmit={handleConnect} className="space-y-4">
-          <div className="space-y-2">
-            <label className="block text-sm text-gray-300">
-              Database Path
-            </label>
-            <input
-              type="text"
-              value={dbPath}
-              onChange={(e) => setDbPath(e.target.value)}
-              placeholder="Enter database path (e.g., ~/images.db)"
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              disabled={loading}
-            />
-          </div>
-          
+        <form onSubmit={handleConnect} className="flex items-center">
+          <input
+            type="text"
+            value={dbPath}
+            onChange={(e) => setDbPath(e.target.value)}
+            placeholder="Database path..."
+            className="w-48 px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-l text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            disabled={loading}
+          />
           <button
             type="submit"
             disabled={loading || !dbPath.trim()}
-            className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-r text-sm font-medium disabled:opacity-50 transition-colors"
           >
             {loading ? (
-              <span className="flex items-center justify-center">
-                <span className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full mr-2" />
-                Connecting...
+              <span className="flex items-center">
+                <span className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full mr-1" />
+                <span>Connecting...</span>
               </span>
             ) : 'Connect'}
           </button>
