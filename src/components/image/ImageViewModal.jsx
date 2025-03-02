@@ -24,12 +24,30 @@ function ImageViewModal({ imageUrl, onClose }) {
                 width: 100%;
                 height: 100%;
                 overflow: hidden;
-                background-color: #242424;
+                background-color: var(--color-background, #242424);
+                color-scheme: dark light;
               }
+              
+              @media (prefers-color-scheme: light) {
+                html, body {
+                  background-color: var(--color-background, #ffffff);
+                }
+              }
+              
               img {
                 width: 100%;
                 height: 100%;
                 object-fit: contain;
+              }
+              
+              :root {
+                --color-background: #242424;
+              }
+              
+              @media (prefers-color-scheme: light) {
+                :root {
+                  --color-background: #ffffff;
+                }
               }
             </style>
           </head>

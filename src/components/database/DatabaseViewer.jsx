@@ -27,26 +27,26 @@ function DatabaseViewer() {
   
   if (!images?.length) {
     return (
-      <div className="text-gray-400 text-center py-8">
+      <div className="text-text-muted text-center py-8">
         No images in database
       </div>
     );
   }
 
   const getFieldClassName = (imageId, field) => {
-    const baseClasses = "w-full px-2 py-1 bg-gray-700 border rounded text-sm disabled:opacity-75 disabled:cursor-not-allowed";
-    if (!editMode) return `${baseClasses} border-gray-600`;
+    const baseClasses = "w-full px-2 py-1 bg-background-alt border rounded text-sm disabled:opacity-75 disabled:cursor-not-allowed";
+    if (!editMode) return `${baseClasses} border-border`;
     const isInvalid = validationState[imageId]?.[field] === false;
     return `${baseClasses} ${
       isInvalid 
-        ? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
-        : 'border-gray-600 focus:border-blue-500 focus:ring-blue-500'
+        ? 'border-error focus:border-error focus:ring-error' 
+        : 'border-border focus:border-primary focus:ring-primary'
     }`;
   };
 
   const renderTextField = (image, field, label = '') => (
     <div className="space-y-1">
-      <label className="block text-xs text-gray-400">{label}</label>
+      <label className="block text-xs text-text-muted">{label}</label>
       <input
         type="text"
         value={editMode ? editableImages.find(img => img.id === image.id)?.[field] || '' : image[field] || ''}
@@ -59,7 +59,7 @@ function DatabaseViewer() {
 
   const renderArrayField = (image, field, label = '') => (
     <div className="space-y-1">
-      <label className="block text-xs text-gray-400">{label}</label>
+      <label className="block text-xs text-text-muted">{label}</label>
       <textarea
         value={editMode 
           ? editableImages.find(img => img.id === image.id)?.[field]?.join('\n') || ''
@@ -82,37 +82,37 @@ function DatabaseViewer() {
       
       <div className="flex justify-between items-center">
         <div className="flex items-baseline gap-2">
-          <h2 className="text-xl font-bold text-gray-200">Database Contents</h2>
-          <span className="text-sm text-gray-400">({totalImages} images)</span>
+          <h2 className="text-xl font-bold text-text">Database Contents</h2>
+          <span className="text-sm text-text-muted">({totalImages} images)</span>
         </div>
         
         <button
           onClick={handleEditToggle}
-          className={`px-4 py-2 rounded transition-colors ${
+          className={`px-4 py-2 rounded transition-colors shadow-sm font-medium ${
             editMode 
-              ? 'bg-green-600 hover:bg-green-700 text-white' 
-              : 'bg-blue-600 hover:bg-blue-700 text-white'
+              ? 'bg-success hover:bg-success/90 text-text-on-primary border border-success' 
+              : 'bg-primary hover:bg-primary/90 text-text-on-primary border border-primary'
           }`}
-        >
+        >    
           {editMode ? 'Save Changes' : 'Edit All'}
         </button>
       </div>
 
-      <div className="overflow-x-auto border border-gray-700 rounded-lg">
+      <div className="overflow-x-auto border border-border rounded-lg shadow-sm bg-background-subtle">
         <table className="w-full border-collapse">
-          <thead className="bg-gray-800">
+          <thead className="bg-background-alt">
             <tr>
-              <th className="p-3 text-left text-gray-200 align-top font-medium text-sm">Image</th>
-              <th className="p-3 text-left text-gray-200 align-top font-medium text-sm">Name Info</th>
-              <th className="p-3 text-left text-gray-200 align-top font-medium text-sm">Work Info</th>
-              <th className="p-3 text-left text-gray-200 align-top font-medium text-sm">Contact Info</th>
-              <th className="p-3 text-left text-gray-200 align-top font-medium text-sm">Online Presence</th>
-              <th className="p-3 text-left text-gray-200 align-top font-medium text-sm">Addresses</th>
+              <th className="p-3 text-left text-text align-top font-medium text-sm border-b border-border-subtle">Image</th>
+              <th className="p-3 text-left text-text align-top font-medium text-sm border-b border-border-subtle">Name Info</th>
+              <th className="p-3 text-left text-text align-top font-medium text-sm border-b border-border-subtle">Work Info</th>
+              <th className="p-3 text-left text-text align-top font-medium text-sm border-b border-border-subtle">Contact Info</th>
+              <th className="p-3 text-left text-text align-top font-medium text-sm border-b border-border-subtle">Online Presence</th>
+              <th className="p-3 text-left text-text align-top font-medium text-sm border-b border-border-subtle">Addresses</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-700">
+          <tbody className="divide-y divide-border-subtle">
             {(editMode ? editableImages : images).map((image) => (
-              <tr key={image.id} className="hover:bg-gray-800/50">
+              <tr key={image.id} className="hover:bg-background-alt/50">
                 <td className="p-3 align-top">
                   <ImageThumbnail
                     image={image}

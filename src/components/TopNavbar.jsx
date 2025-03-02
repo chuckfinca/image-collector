@@ -8,30 +8,30 @@ function TopNavbar() {
   const [statusMessage, setStatusMessage] = useState('');
   
   return (
-    <div className="bg-gray-800 p-2 border-b border-gray-700">
-      <div className="container mx-auto flex items-center">
-        {/* App title */}
-        <h1 className="text-base font-bold text-white mr-4">Contact Collector</h1>
-        
-        {/* Database Connection - now directly in the navbar */}
-        <DatabaseConnection onStatusChange={setStatusMessage} />
-        
-        {/* Spacer */}
-        <div className="flex-grow"></div>
-        
-        {/* Status Message */}
-        {statusMessage && (
-          <div className="text-sm mx-2 px-2 py-1 bg-gray-700 rounded text-gray-200">
-            {statusMessage}
-          </div>
-        )}
-        
-        {/* Upload Controls - only visible when connected */}
-        {isConnected && (
-          <UploadControls onStatusChange={setStatusMessage} />
-        )}
-      </div>
-    </div>
+    <div className="bg-background-alt p-2 border-b border-border shadow-sm">
+        <div className="container mx-auto flex items-center">
+            {/* App title */}
+            <h1 className="text-base font-bold text-text mr-4 flex items-center">Contact Collector</h1>
+            
+            {/* Database Connection */}
+            <DatabaseConnection onStatusChange={setStatusMessage} />
+            
+            {/* Spacer */}
+            <div className="flex-grow"></div>
+            
+            {/* Status Message */}
+            {statusMessage && (
+            <div className="text-sm mx-2 px-3 py-1.5 bg-background-subtle rounded text-text-muted border border-border-subtle">
+                {statusMessage}
+            </div>
+            )}
+            
+            {/* Upload Controls */}
+            {isConnected && (
+            <UploadControls onStatusChange={setStatusMessage} />
+            )}
+        </div>
+        </div>
   );
 }
 

@@ -47,11 +47,11 @@ function DatabaseConnection({ onStatusChange = () => {} }) {
       {isConnected ? (
         <button
           onClick={handleDisconnect}
-          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-sm font-medium transition-colors relative group"
+          className="px-3 py-1.5 bg-error hover:bg-error/90 text-text-on-primary rounded text-sm font-medium transition-colors relative group shadow-sm border border-error"
         >
           <span>Disconnect</span>
           {/* Path tooltip on hover */}
-          <div className="absolute left-0 top-full mt-1 bg-gray-800 text-xs text-gray-300 p-2 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap">
+          <div className="absolute left-0 top-full mt-1 bg-background-alt text-xs text-text p-2 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap border border-border">
             from <span className="font-mono">{dbPath}</span>
           </div>
         </button>
@@ -62,13 +62,13 @@ function DatabaseConnection({ onStatusChange = () => {} }) {
             value={dbPath}
             onChange={(e) => setDbPath(e.target.value)}
             placeholder="Database path..."
-            className="w-48 px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-l text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-48 px-3 py-1.5 bg-background-alt border border-border rounded-l text-sm focus:outline-none focus:ring-1 focus:ring-primary"
             disabled={loading}
           />
           <button
             type="submit"
             disabled={loading || !dbPath.trim()}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-r text-sm font-medium disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-text-on-primary rounded-r text-sm font-medium disabled:opacity-50 transition-colors shadow-sm border border-primary"
           >
             {loading ? (
               <span className="flex items-center">

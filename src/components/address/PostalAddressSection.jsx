@@ -1,6 +1,5 @@
 import React from 'react';
 
-// This component will handle displaying and editing postal addresses
 function PostalAddressSection({ image, editMode, editableImages, handleInputChange }) {
   // If in edit mode, use the editable image data, otherwise use the original image data
   const currentImage = editMode 
@@ -16,16 +15,16 @@ function PostalAddressSection({ image, editMode, editableImages, handleInputChan
   }
 
   const getFieldClassName = (field) => {
-    const baseClasses = "w-full px-2 py-1 bg-gray-700 border rounded text-sm disabled:opacity-75 disabled:cursor-not-allowed";
-    return `${baseClasses} ${editMode ? 'border-gray-600 focus:border-blue-500 focus:ring-blue-500' : 'border-gray-600'}`;
+    const baseClasses = "w-full px-2 py-1 bg-background-alt border rounded text-sm disabled:opacity-75 disabled:cursor-not-allowed";
+    return `${baseClasses} ${editMode ? 'border-border focus:border-primary focus:ring-primary' : 'border-border'}`;
   };
 
   // Render a single postal address with all its fields
   const renderPostalAddress = (address, index) => (
-    <div key={index} className="p-3 mb-2 border border-gray-700 rounded bg-gray-800/50">
+    <div key={index} className="p-3 mb-2 border border-border rounded bg-background-alt/50">
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
-          <label className="block text-xs text-gray-400">Street</label>
+          <label className="block text-xs text-text-muted">Street</label>
           <input
             type="text"
             value={address.street || ''}
@@ -35,7 +34,7 @@ function PostalAddressSection({ image, editMode, editableImages, handleInputChan
           />
         </div>
         <div className="space-y-1">
-          <label className="block text-xs text-gray-400">City</label>
+          <label className="block text-xs text-text-muted">City</label>
           <input
             type="text"
             value={address.city || ''}
@@ -45,7 +44,7 @@ function PostalAddressSection({ image, editMode, editableImages, handleInputChan
           />
         </div>
         <div className="space-y-1">
-          <label className="block text-xs text-gray-400">State/Province</label>
+          <label className="block text-xs text-text-muted">State/Province</label>
           <input
             type="text"
             value={address.state || ''}
@@ -55,7 +54,7 @@ function PostalAddressSection({ image, editMode, editableImages, handleInputChan
           />
         </div>
         <div className="space-y-1">
-          <label className="block text-xs text-gray-400">Postal Code</label>
+          <label className="block text-xs text-text-muted">Postal Code</label>
           <input
             type="text"
             value={address.postal_code || ''}
@@ -65,7 +64,7 @@ function PostalAddressSection({ image, editMode, editableImages, handleInputChan
           />
         </div>
         <div className="space-y-1">
-          <label className="block text-xs text-gray-400">Country</label>
+          <label className="block text-xs text-text-muted">Country</label>
           <input
             type="text"
             value={address.country || ''}
@@ -79,7 +78,7 @@ function PostalAddressSection({ image, editMode, editableImages, handleInputChan
       {editMode && (
         <button
           onClick={() => handleRemoveAddress(index)}
-          className="mt-2 px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+          className="mt-2 px-2 py-1 text-xs bg-error text-white rounded hover:bg-error/90"
         >
           Remove Address
         </button>
@@ -123,7 +122,7 @@ function PostalAddressSection({ image, editMode, editableImages, handleInputChan
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-medium text-gray-300">Postal Addresses</h3>
+      <h3 className="text-sm font-medium text-text">Postal Addresses</h3>
       
       <div className="space-y-3">
         {postalAddresses.map((address, index) => renderPostalAddress(address, index))}
@@ -131,14 +130,14 @@ function PostalAddressSection({ image, editMode, editableImages, handleInputChan
         {editMode && (
           <button
             onClick={handleAddAddress}
-            className="w-full mt-2 px-2 py-1 text-sm bg-gray-700 text-gray-300 rounded hover:bg-gray-600"
+            className="w-full mt-2 px-2 py-1 text-sm bg-background-alt text-text-muted rounded hover:bg-background-alt/80"
           >
             + Add Address
           </button>
         )}
         
         {!postalAddresses.length && !editMode && (
-          <div className="text-sm text-gray-500">No addresses</div>
+          <div className="text-sm text-text-muted">No addresses</div>
         )}
       </div>
     </div>
