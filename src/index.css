@@ -24,8 +24,8 @@
   --color-text-muted: rgba(255, 255, 255, 0.6);
   --color-text-on-primary: #ffffff;
   
-  --color-border: rgb(207, 27, 27);
-  --color-border-subtle: rgb(162, 16, 195);
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
   
   --color-success: #10B981;
   --color-warning: #F59E0B;
