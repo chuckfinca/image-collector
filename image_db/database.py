@@ -341,9 +341,6 @@ class ImageDatabase:
                     try:
                         server_response = ServerResponse[ContactInfo].model_validate(raw_response)
                         logger.info("Successfully validated server response")
-                    except Exception as validation_error:
-                        logger.info(f"Validation error: {validation_error}")
-                        raise
                         
                         if not server_response.success:
                             error_msg = server_response.error or 'Unknown error'
@@ -393,7 +390,7 @@ class ImageDatabase:
                         
                     except Exception as validation_error:
                         logger.info(f"Validation error: {validation_error}")
-                        raise
+                        raise Exception(f"Failed to parse server response: {validation_error}")
                         
         except Exception as e:
             logger.info(f"Error extracting contact info: {e}")
