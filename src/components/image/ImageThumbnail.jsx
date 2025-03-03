@@ -46,32 +46,32 @@ function ImageThumbnail({
 
   return (
     <div className="space-y-2">
-      <div className="w-32 h-32 bg-gray-800 rounded flex items-center justify-center">
-    {image.thumbnail ? (
-        <img
-        src={image.thumbnail}
-        alt="Contact info card"
-        className="object-contain w-full h-full rounded cursor-pointer"
-        onDoubleClick={handleImageClick}
-        />
-    ) : (
-        <div className="text-gray-500 flex flex-col items-center justify-center w-full h-full">
-        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <path d="M20 15l-5-5L5 20" />
-        </svg>
-        <span className="text-xs mt-1">No thumbnail</span>
-        </div>
-    )}
-    </div>
+      <div className="w-32 h-32 bg-background-alt rounded flex items-center justify-center">
+        {image.thumbnail ? (
+          <img
+            src={image.thumbnail}
+            alt="Contact info card"
+            className="object-contain w-full h-full rounded cursor-pointer"
+            onDoubleClick={handleImageClick}
+          />
+        ) : (
+          <div className="text-text-muted flex flex-col items-center justify-center w-full h-full">
+            <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M20 15l-5-5L5 20" />
+            </svg>
+            <span className="text-xs mt-1">No thumbnail</span>
+          </div>
+        )}
+      </div>
       
-      <div className="text-xs text-gray-400">
+      <div className="text-xs text-text-muted">
         Added: {new Date(image.date_added).toLocaleString()}
       </div>
       
       {extractError && (
-        <div className="text-xs text-red-500">
+        <div className="text-xs text-error">
           {extractError}
         </div>
       )}
@@ -81,8 +81,8 @@ function ImageThumbnail({
         disabled={extracting || !editMode}
         className={`w-full px-2 py-1 text-sm rounded transition-colors ${
           extracting 
-            ? 'bg-purple-400 cursor-not-allowed' 
-            : 'bg-purple-500 hover:bg-purple-600'
+            ? 'bg-secondary/70 cursor-not-allowed' 
+            : 'bg-secondary hover:bg-secondary/90'
         } text-white disabled:opacity-50`}
       >
         {extracting ? 'Extracting...' : 'Extract Contact Info'}
@@ -91,7 +91,7 @@ function ImageThumbnail({
       <button
         onClick={handleDelete}
         disabled={extracting}
-        className="w-full px-2 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 transition-colors"
+        className="w-full px-2 py-1 text-sm bg-error text-white rounded hover:bg-error/90 disabled:opacity-50 transition-colors"
       >
         Delete Entry
       </button>
