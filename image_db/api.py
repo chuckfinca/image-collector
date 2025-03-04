@@ -5,7 +5,7 @@ import sqlite3
 import aiohttp
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 import logging
-from .models import DbPath, ImageUpdate
+from .models import DbPath, ImageUpdate, VersionCreate
 from .database import ImageDatabase
 from .utils import get_db_connection, create_thumbnail
 from io import BytesIO
@@ -220,16 +220,19 @@ async def extract_contact(image_id: int):
                 logger.warning(f"Image ID {image_id} not found")
                 raise HTTPException(status_code=404, detail="Image not found")
         
-        contact_info = await image_db.extract_contact_info(image_id)
+        result = await image_db.extract_contact_info(image_id)
+        if not result["success"]:
+            raise HTTPException(status_code=500, detail=result["error"])
+            
         logger.info(f"Successfully extracted contact info for image ID: {image_id}")
-        return {"success": True, "data": contact_info}
+        return {"success": True, "data": result["data"]}
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
         logger.error(f"Error extracting contact info: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Extraction error: {str(e)}")
-    
+
 @router.delete("/image/{image_id}")
 async def delete_image(image_id: int):
     if not image_db:
@@ -347,3 +350,54 @@ async def upload_image_url(url: str = Form(...)):
     except Exception as e:
         logger.error(f"Error uploading from URL: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.post("/version/{image_id}")
+async def create_image_version(
+    image_id: int, 
+    version_data: VersionCreate,
+    image_db: ImageDatabase = Depends(get_image_db)
+):
+    """Create a new version for an image."""
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    try:
+        version_id = await image_db.create_version(
+            image_id=image_id,
+            tag=version_data.tag,
+            source_version_id=version_data.source_version_id,
+            notes=version_data.notes
+        )
+        
+        return {"success": True, "version_id": version_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/versions/{image_id}")
+async def get_image_versions(
+    image_id: int,
+    image_db: ImageDatabase = Depends(get_image_db)
+):
+    """Get all versions for an image."""
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    versions = image_db.get_image_versions(image_id)
+    return {"versions": versions}
+
+@router.put("/version/{version_id}")
+async def update_version(
+    version_id: int, 
+    update_data: ImageUpdate,
+    image_db: ImageDatabase = Depends(get_image_db)
+):
+    """Update a specific version."""
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    success = image_db.update_version(version_id, update_data.model_dump(exclude_unset=True))
+    
+    if success:
+        return {"success": True, "message": "Version updated successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to update version")

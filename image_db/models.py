@@ -67,3 +67,13 @@ class ImageUpdate(BaseModel):
         if v and not re.match(r"[^@]+@[^@]+\.[^@]+", v):
             raise ValueError(f'Invalid email address: {v}')
         return v
+    
+class VersionCreate(BaseModel):
+    tag: str
+    source_version_id: Optional[int] = None
+    notes: Optional[str] = None
+
+class VersionUpdate(BaseModel):
+    tag: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: Optional[bool] = None

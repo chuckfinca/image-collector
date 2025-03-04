@@ -11,6 +11,8 @@ export const DatabaseProvider = ({ children }) => {
   const [error, setError] = useState(null);
   const [totalImages, setTotalImages] = useState(0);
   const [operationStatus, setOperationStatus] = useState({});
+  const [versions, setVersions] = useState({});
+  const [activeVersions, setActiveVersions] = useState({});
 
   // Centralized error handler
   const handleError = (error, operation) => {
@@ -182,6 +184,79 @@ export const DatabaseProvider = ({ children }) => {
     }
   }, [refreshImages]);
 
+  const fetchVersions = useCallback(async (imageId) => {
+    try {
+      const response = await api.getVersions(imageId);
+      setVersions(prev => ({
+        ...prev,
+        [imageId]: response.versions
+      }));
+      
+      // Set active version if one exists
+      const activeVersion = response.versions.find(v => v.is_active);
+      if (activeVersion) {
+        setActiveVersions(prev => ({
+          ...prev,
+          [imageId]: activeVersion.id
+        }));
+      }
+    } catch (error) {
+      handleError(error, `fetch-versions-${imageId}`);
+    }
+  }, [handleError]);
+
+  // Versioning operations
+  const createVersion = useCallback(async (imageId, tag, sourceVersionId = null, notes = '') => {
+    try {
+      setOperationStatus(prev => ({
+        ...prev,
+        [`version-${imageId}`]: { loading: true }
+      }));
+      
+      const result = await api.createVersion(imageId, {
+        tag,
+        source_version_id: sourceVersionId,
+        notes
+      });
+      
+      // Refresh versions
+      await fetchVersions(imageId);
+      
+      setOperationStatus(prev => ({
+        ...prev,
+        [`version-${imageId}`]: { success: true }
+      }));
+      
+      return result;
+    } catch (error) {
+      handleError(error, `version-${imageId}`);
+      throw error;
+    }
+  }, [fetchVersions, handleError]);
+  
+  const updateVersionData = useCallback(async (versionId, updatedData) => {
+    try {
+      await api.updateVersion(versionId, updatedData);
+      
+      // Find the image ID associated with this version
+      let imageId = null;
+      for (const [imgId, versionList] of Object.entries(versions)) {
+        if (versionList.some(v => v.id === versionId)) {
+          imageId = parseInt(imgId);
+          break;
+        }
+      }
+      
+      if (imageId) {
+        await fetchVersions(imageId);
+      }
+    } catch (error) {
+      handleError(error, `update-version-${versionId}`);
+      throw error;
+    }
+  }, [versions, fetchVersions, handleError]);
+  
+
   const value = {
     // State
     dbPath,
@@ -201,7 +276,15 @@ export const DatabaseProvider = ({ children }) => {
     extractContactInfo,
     updateImage,
     deleteImage,
-    refreshImages
+    refreshImages,
+
+    // Versioning
+    versions,
+    activeVersions,
+    fetchVersions,
+    createVersion,
+    updateVersionData,
+    setActiveVersions
   };
 
   return (

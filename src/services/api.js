@@ -63,6 +63,29 @@ export const api = {
   getStatus: async () => {
     const response = await fetch(`${API_BASE_URL}/status`);
     return handleResponse(response);
+  },
+
+  createVersion: async (imageId, data) => {
+    const response = await fetch(`${API_BASE_URL}/version/${imageId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+  
+  getVersions: async (imageId) => {
+    const response = await fetch(`${API_BASE_URL}/versions/${imageId}`);
+    return handleResponse(response);
+  },
+  
+  updateVersion: async (versionId, data) => {
+    const response = await fetch(`${API_BASE_URL}/version/${versionId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
   }
 };
 
@@ -73,3 +96,4 @@ const handleResponse = async (response) => {
   }
   return response.json();
 };
+
