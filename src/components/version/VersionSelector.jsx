@@ -21,8 +21,12 @@ function VersionSelector({ imageId }) {
   const activeVersionId = activeVersions[imageId];
   
   useEffect(() => {
-    fetchVersions(imageId);
-  }, [imageId, fetchVersions]);
+
+    // Only fetch versions once when the component mounts
+    if (!versions[imageId]) {
+      fetchVersions(imageId);
+    }
+  }, [imageId, versions, fetchVersions]);
   
   const handleVersionChange = (e) => {
     const versionId = parseInt(e.target.value);

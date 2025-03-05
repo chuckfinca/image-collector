@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { validateField, validateArray } from '../utils/validation';
 
-export const useImageEditor = (images, updateImage) => {
+export const useImageEditor = (images, updateImage, updateVersionData, activeVersions) => {
   const [editMode, setEditMode] = useState(false);
   const [editableImages, setEditableImages] = useState([]);
   const [validationState, setValidationState] = useState({});
@@ -56,7 +56,7 @@ export const useImageEditor = (images, updateImage) => {
         const fields = [
           'name_prefix', 'given_name', 'middle_name', 'family_name', 'name_suffix',
           'job_title', 'department', 'organization_name',
-          'phone_numbers', 'email_addresses', 'url_addresses'
+          'phone_numbers', 'email_addresses', 'url_addresses', 'postal_addresses'
         ];
 
         fields.forEach(field => {
@@ -71,9 +71,20 @@ export const useImageEditor = (images, updateImage) => {
         // Only update if there are actual changes
         if (hasFieldChanges && validateFields(image.id, changes)) {
           try {
-            await updateImage(image.id, changes);
+            // Check if we're editing a version or the main image
+            const activeVersionId = activeVersions[image.id];
+            
+            if (activeVersionId) {
+              console.log(`Updating version ${activeVersionId} for image ${image.id} with changes:`, changes);
+              // Update version data
+              await updateVersionData(activeVersionId, changes);
+            } else {
+              console.log(`Updating main image ${image.id} with changes:`, changes);
+              // Update main image data
+              await updateImage(image.id, changes);
+            }
           } catch (error) {
-            console.error(`Failed to update image ${image.id}:`, error);
+            console.error(`Failed to update image/version for ${image.id}:`, error);
           }
         }
       });
@@ -87,7 +98,7 @@ export const useImageEditor = (images, updateImage) => {
 
     setEditMode(!editMode);
     setHasChanges(false);
-  }, [editMode, editableImages, images, hasChanges, validateFields, updateImage]);
+  }, [editMode, editableImages, images, hasChanges, validateFields, updateImage, updateVersionData, activeVersions]);
 
   const handleInputChange = useCallback((imageId, field, value) => {
     setEditableImages(prev => 

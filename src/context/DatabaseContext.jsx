@@ -15,14 +15,14 @@ export const DatabaseProvider = ({ children }) => {
   const [activeVersions, setActiveVersions] = useState({});
 
   // Centralized error handler
-  const handleError = (error, operation) => {
+  const handleError = useCallback((error, operation) => {
     console.error(`Error during ${operation}:`, error);
     setError(error.message);
     setOperationStatus(prev => ({
       ...prev,
       [operation]: { error: error.message }
     }));
-  };
+  }, []);
 
   // Centralized image refresh
   const refreshImages = useCallback(async () => {
@@ -187,19 +187,22 @@ export const DatabaseProvider = ({ children }) => {
   const fetchVersions = useCallback(async (imageId) => {
     try {
       const response = await api.getVersions(imageId);
-      setVersions(prev => ({
-        ...prev,
-        [imageId]: response.versions
-      }));
-      
-      // Set active version if one exists
       const activeVersion = response.versions.find(v => v.is_active);
-      if (activeVersion) {
-        setActiveVersions(prev => ({
-          ...prev,
-          [imageId]: activeVersion.id
-        }));
-      }
+      
+      // Batch state updates
+      setVersions(prev => {
+        const newVersions = {...prev, [imageId]: response.versions};
+        
+        // Update active versions in the same render cycle
+        if (activeVersion) {
+          setActiveVersions(prevActive => ({
+            ...prevActive,
+            [imageId]: activeVersion.id
+          }));
+        }
+        
+        return newVersions;
+      });
     } catch (error) {
       handleError(error, `fetch-versions-${imageId}`);
     }

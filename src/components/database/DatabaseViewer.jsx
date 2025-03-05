@@ -9,7 +9,10 @@ function DatabaseViewer() {
   const { 
     images,
     updateImage,
-    totalImages
+    totalImages,
+    versions,
+    activeVersions,
+    updateVersionData
   } = useDb();
 
   const {
@@ -19,11 +22,55 @@ function DatabaseViewer() {
     handleEditToggle,
     handleInputChange,
     handleArrayInputChange
-  } = useImageEditor(images, updateImage);
+  } = useImageEditor(images, updateImage, updateVersionData, activeVersions);
 
   const [selectedImageUrl, setSelectedImageUrl] = React.useState(null);
 
   console.log("DatabaseViewer received images:", images);
+  console.log("Active versions:", activeVersions);
+  console.log("Versions data:", versions);
+  
+  // Get image data with version overlay if available
+  const getDisplayImages = () => {
+    return images.map(image => {
+      // Check if there's an active version for this image
+      const activeVersionId = activeVersions[image.id];
+      
+      // If no active version, just return the original image
+      if (!activeVersionId) return image;
+      
+      // Find the version data
+      const imageVersions = versions[image.id] || [];
+      const activeVersion = imageVersions.find(v => v.id === activeVersionId);
+      
+      if (!activeVersion) return image;
+      
+      console.log(`Applying version ${activeVersionId} (${activeVersion.tag}) to image ${image.id}`);
+      
+      // Create a new object with image data as base, overlaid with version data
+      return {
+        ...image,
+        // Apply each field from the version if it exists
+        name_prefix: activeVersion.name_prefix ?? "",
+        given_name: activeVersion.given_name ?? "",
+        middle_name: activeVersion.middle_name ?? "",
+        family_name: activeVersion.family_name ?? "",
+        name_suffix: activeVersion.name_suffix ?? "",
+        job_title: activeVersion.job_title ?? "",
+        department: activeVersion.department ?? "",
+        organization_name: activeVersion.organization_name ?? "",
+        phone_numbers: activeVersion.phone_numbers || "",
+        email_addresses: activeVersion.email_addresses || "",
+        url_addresses: activeVersion.url_addresses || "",
+        postal_addresses: activeVersion.postal_addresses || "",
+        // Add indicator that this is a version overlay
+        _displayedVersionId: activeVersionId,
+        _versionTag: activeVersion.tag
+      };
+    });
+  };
+
+  const displayImages = getDisplayImages();
   
   if (!images?.length) {
     return (
@@ -35,12 +82,20 @@ function DatabaseViewer() {
 
   const getFieldClassName = (imageId, field) => {
     const baseClasses = "w-full px-2 py-1 bg-background-alt border rounded text-sm disabled:opacity-75 disabled:cursor-not-allowed";
-    if (!editMode) return `${baseClasses} border-border`;
+    
+    // Add special styling for version fields
+    const hasActiveVersion = !!activeVersions[imageId];
+    const versionStyled = hasActiveVersion ? 'border-secondary' : 'border-border';
+    
+    if (!editMode) return `${baseClasses} ${versionStyled}`;
+    
     const isInvalid = validationState[imageId]?.[field] === false;
     return `${baseClasses} ${
       isInvalid 
         ? 'border-error focus:border-error focus:ring-error' 
-        : 'border-border focus:border-primary focus:ring-primary'
+        : hasActiveVersion
+          ? 'border-secondary focus:border-secondary focus:ring-secondary' 
+          : 'border-border focus:border-primary focus:ring-primary'
     }`;
   };
 
@@ -111,14 +166,21 @@ function DatabaseViewer() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle">
-            {(editMode ? editableImages : images).map((image) => (
-              <tr key={image.id} className="hover:bg-background-alt/50">
+            {(editMode ? editableImages : displayImages).map((image) => (
+              <tr key={image.id} className={`hover:bg-background-alt/50 ${image._displayedVersionId ? 'bg-secondary/5' : ''}`}>
                 <td className="p-3 align-top">
                   <ImageThumbnail
                     image={image}
                     onSetSelectedImageUrl={setSelectedImageUrl}
                     editMode={editMode}
                   />
+                  
+                  {/* Version indicator */}
+                  {image._displayedVersionId && !editMode && (
+                    <div className="mt-2 text-xs py-1 px-2 bg-secondary/20 text-secondary rounded">
+                      Showing version: {image._versionTag}
+                    </div>
+                  )}
                 </td>
                 <td className="p-3 align-top">
                   <div className="space-y-2">
