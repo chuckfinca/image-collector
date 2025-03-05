@@ -1,4 +1,3 @@
-// Create a new file: src/components/version/VersionSelector.jsx
 import React, { useState, useEffect } from 'react';
 import { useDb } from '../../context/DatabaseContext';
 
@@ -21,29 +20,54 @@ function VersionSelector({ imageId }) {
   const activeVersionId = activeVersions[imageId];
   
   useEffect(() => {
-
-    // Only fetch versions once when the component mounts
+    // Only fetch versions once when the component mounts or if versions are empty
     if (!versions[imageId]) {
+      console.log(`Initial fetch of versions for image ${imageId}`);
       fetchVersions(imageId);
     }
   }, [imageId, versions, fetchVersions]);
   
   const handleVersionChange = (e) => {
     const versionId = parseInt(e.target.value);
-    setActiveVersions(prev => ({
-      ...prev,
-      [imageId]: versionId
-    }));
+    console.log(`Setting active version for image ${imageId} to ${versionId}`);
+    
+    if (versionId) {
+      // Set the selected version as active
+      setActiveVersions(prev => ({
+        ...prev,
+        [imageId]: versionId
+      }));
+    } else {
+      // If empty value selected, remove the active version (use base image)
+      setActiveVersions(prev => {
+        const newVersions = {...prev};
+        delete newVersions[imageId];
+        return newVersions;
+      });
+    }
   };
   
   const handleCreateVersion = async (e) => {
     e.preventDefault();
     try {
-      await createVersion(imageId, newVersionTag, sourceVersionId, notes);
+      const result = await createVersion(imageId, newVersionTag, sourceVersionId, notes);
+      console.log(`Created new version with ID: ${result.version_id}`);
+      
       // Reset form
       setNewVersionTag('');
       setNotes('');
       setShowCreateForm(false);
+      
+      // Make sure versions are refreshed
+      await fetchVersions(imageId);
+      
+      // Auto-select the newly created version
+      if (result && result.version_id) {
+        setActiveVersions(prev => ({
+          ...prev,
+          [imageId]: result.version_id
+        }));
+      }
     } catch (error) {
       console.error('Failed to create version:', error);
     }
@@ -60,7 +84,7 @@ function VersionSelector({ imageId }) {
           onChange={handleVersionChange}
           className="flex-1 px-2 py-1 bg-background-alt border border-border rounded text-sm"
         >
-          <option value="" disabled>Select version</option>
+          <option value="">Base Image</option>
           {imageVersions.map(version => (
             <option key={version.id} value={version.id}>
               {version.tag} ({new Date(version.created_at).toLocaleString()})

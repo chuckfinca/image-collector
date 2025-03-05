@@ -237,27 +237,58 @@ export const DatabaseProvider = ({ children }) => {
     }
   }, [fetchVersions, handleError]);
   
-  const updateVersionData = useCallback(async (versionId, updatedData) => {
-    try {
-      await api.updateVersion(versionId, updatedData);
+  // Add this improved updateVersionData function to your DatabaseContext.jsx
+
+const updateVersionData = useCallback(async (versionId, updatedData) => {
+  try {
+    console.log(`Updating version ${versionId} with data:`, updatedData);
+    
+    // Store the current active versions to preserve them
+    const currentActiveVersions = {...activeVersions};
+    
+    await api.updateVersion(versionId, updatedData);
+    
+    // Find the image ID associated with this version
+    let imageId = null;
+    for (const [imgId, versionList] of Object.entries(versions)) {
+      if (versionList.some(v => v.id === versionId)) {
+        imageId = parseInt(imgId);
+        break;
+      }
+    }
+    
+    if (imageId) {
+      console.log(`Refreshing versions for image ${imageId} after update`);
       
-      // Find the image ID associated with this version
-      let imageId = null;
-      for (const [imgId, versionList] of Object.entries(versions)) {
-        if (versionList.some(v => v.id === versionId)) {
-          imageId = parseInt(imgId);
-          break;
+      // Refresh the versions data without changing active version
+      const response = await api.getVersions(imageId);
+      
+      if (response && response.versions) {
+        console.log(`Received updated versions:`, response.versions);
+        
+        // Update versions while preserving active selection
+        setVersions(prev => ({
+          ...prev,
+          [imageId]: response.versions
+        }));
+        
+        // Ensure the active version stays selected
+        // Only needed if fetchVersions internally modifies activeVersions
+        if (currentActiveVersions[imageId] === versionId) {
+          setActiveVersions(prev => ({
+            ...prev,
+            [imageId]: versionId
+          }));
         }
       }
-      
-      if (imageId) {
-        await fetchVersions(imageId);
-      }
-    } catch (error) {
-      handleError(error, `update-version-${versionId}`);
-      throw error;
     }
-  }, [versions, fetchVersions, handleError]);
+    
+    return true;
+  } catch (error) {
+    handleError(error, `update-version-${versionId}`);
+    throw error;
+  }
+}, [versions, activeVersions, handleError]);
   
 
   const value = {

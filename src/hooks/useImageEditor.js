@@ -96,8 +96,11 @@ export const useImageEditor = (images, updateImage, updateVersionData, activeVer
       setValidationState({});
     }
 
+    // Exit edit mode without resetting any other state
     setEditMode(!editMode);
     setHasChanges(false);
+    
+    // We intentionally don't reset activeVersions here so the UI stays on the same version
   }, [editMode, editableImages, images, hasChanges, validateFields, updateImage, updateVersionData, activeVersions]);
 
   const handleInputChange = useCallback((imageId, field, value) => {
