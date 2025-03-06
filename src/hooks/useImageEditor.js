@@ -1,19 +1,32 @@
 import { useState, useCallback, useEffect } from 'react';
 import { validateField, validateArray } from '../utils/validation';
 
-export const useImageEditor = (images, updateImage, updateVersionData, activeVersions) => {
+// IMPORTANT: We're now passing displayImages (already overlaid with version data) rather than raw images
+export const useImageEditor = (displayImages, updateImage, updateVersionData, activeVersions) => {
   const [editMode, setEditMode] = useState(false);
   const [editableImages, setEditableImages] = useState([]);
   const [validationState, setValidationState] = useState({});
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Set editable images ONLY when ENTERING edit mode, not when images change
+  // Initialize editable images when entering edit mode using the displayImages
+  // which already have version data overlaid
   useEffect(() => {
-    if (editMode && editableImages.length === 0) {
-      // Only initialize when entering edit mode and not already initialized
-      setEditableImages(JSON.parse(JSON.stringify(images)));
+    if (editMode) {
+      // Deep clone to avoid modifying the source
+      const imagesForEdit = JSON.parse(JSON.stringify(displayImages));
+      
+      // Store special properties needed for edit tracking
+      imagesForEdit.forEach(img => {
+        // We need to track if this is a version overlay for saving
+        if (img._displayedVersionId) {
+          img._isVersionOverlay = true;
+          img._versionId = img._displayedVersionId;
+        }
+      });
+      
+      setEditableImages(imagesForEdit);
     }
-  }, [editMode]); // Remove images from dependency array
+  }, [editMode, displayImages]);
 
   const validateFields = useCallback((imageId, fields) => {
     const newValidationState = { ...validationState };
@@ -49,7 +62,8 @@ export const useImageEditor = (images, updateImage, updateVersionData, activeVer
     if (editMode && hasChanges) {
       // Save changes
       const updatePromises = editableImages.map(async (image) => {
-        const originalImage = images.find(img => img.id === image.id);
+        // Find the corresponding displayed image to compare with
+        const originalImage = displayImages.find(img => img.id === image.id);
         const changes = {};
         let hasFieldChanges = false;
 
@@ -72,32 +86,27 @@ export const useImageEditor = (images, updateImage, updateVersionData, activeVer
         // Only update if there are actual changes
         if (hasFieldChanges && validateFields(image.id, changes)) {
           try {
-            // Check if we're editing a version or the main image
-            const activeVersionId = activeVersions[image.id];
-            
-            if (activeVersionId) {
-              // Update version data
-              await updateVersionData(activeVersionId, changes);
+            // Use the _isVersionOverlay flag to determine where to save
+            if (image._isVersionOverlay && image._versionId) {
+              console.log(`Updating version ${image._versionId} for image ${image.id}`);
+              await updateVersionData(image._versionId, changes);
             } else {
-              // Update main image data
+              console.log(`Updating base image ${image.id}`);
               await updateImage(image.id, changes);
             }
           } catch (error) {
-            console.error(`Failed to update image/version for ${image.id}:`, error);
+            console.error(`Failed to update for ${image.id}:`, error);
           }
         }
       });
 
       await Promise.all(updatePromises);
-    } else {
-      // Enter edit mode - initialize editable images here
-      setEditableImages(JSON.parse(JSON.stringify(images)));
-      setValidationState({});
     }
 
+    // Toggle edit mode
     setEditMode(!editMode);
     setHasChanges(false);
-  }, [editMode, editableImages, images, hasChanges, validateFields, updateImage, updateVersionData, activeVersions]);
+  }, [editMode, editableImages, displayImages, hasChanges, validateFields, updateImage, updateVersionData]);
 
   const handleInputChange = useCallback((imageId, field, value) => {
     setEditableImages(prev => 

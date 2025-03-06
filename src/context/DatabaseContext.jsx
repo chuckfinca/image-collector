@@ -239,56 +239,56 @@ export const DatabaseProvider = ({ children }) => {
   
   // Add this improved updateVersionData function to your DatabaseContext.jsx
 
-const updateVersionData = useCallback(async (versionId, updatedData) => {
-  try {
-    console.log(`Updating version ${versionId} with data:`, updatedData);
-    
-    // Store the current active versions to preserve them
-    const currentActiveVersions = {...activeVersions};
-    
-    await api.updateVersion(versionId, updatedData);
-    
-    // Find the image ID associated with this version
-    let imageId = null;
-    for (const [imgId, versionList] of Object.entries(versions)) {
-      if (versionList.some(v => v.id === versionId)) {
-        imageId = parseInt(imgId);
-        break;
+  const updateVersionData = useCallback(async (versionId, updatedData) => {
+    try {
+      console.log(`Updating version ${versionId} with data:`, updatedData);
+      
+      // Store the current active versions to preserve them
+      const currentActiveVersions = {...activeVersions};
+      
+      await api.updateVersion(versionId, updatedData);
+      
+      // Find the image ID associated with this version
+      let imageId = null;
+      for (const [imgId, versionList] of Object.entries(versions)) {
+        if (versionList.some(v => v.id === versionId)) {
+          imageId = parseInt(imgId);
+          break;
+        }
       }
-    }
-    
-    if (imageId) {
-      console.log(`Refreshing versions for image ${imageId} after update`);
       
-      // Refresh the versions data without changing active version
-      const response = await api.getVersions(imageId);
-      
-      if (response && response.versions) {
-        console.log(`Received updated versions:`, response.versions);
+      if (imageId) {
+        console.log(`Refreshing versions for image ${imageId} after update`);
         
-        // Update versions while preserving active selection
-        setVersions(prev => ({
-          ...prev,
-          [imageId]: response.versions
-        }));
+        // First, refresh the versions data
+        const versionsResponse = await api.getVersions(imageId);
         
-        // Ensure the active version stays selected
-        // Only needed if fetchVersions internally modifies activeVersions
-        if (currentActiveVersions[imageId] === versionId) {
+        if (versionsResponse && versionsResponse.versions) {
+          console.log(`Received updated versions:`, versionsResponse.versions);
+          
+          // Update versions while preserving active selection
+          setVersions(prev => ({
+            ...prev,
+            [imageId]: versionsResponse.versions
+          }));
+          
+          // Ensure the active version stays selected
           setActiveVersions(prev => ({
             ...prev,
             [imageId]: versionId
           }));
         }
+        
+        // Also refresh the main images to get latest data
+        await refreshImages();
       }
+      
+      return true;
+    } catch (error) {
+      handleError(error, `update-version-${versionId}`);
+      throw error;
     }
-    
-    return true;
-  } catch (error) {
-    handleError(error, `update-version-${versionId}`);
-    throw error;
-  }
-}, [versions, activeVersions, handleError]);
+  }, [versions, activeVersions, handleError, refreshImages]);
   
 
   const value = {

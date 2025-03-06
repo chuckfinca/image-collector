@@ -15,6 +15,45 @@ function DatabaseViewer() {
     updateVersionData
   } = useDb();
 
+  const [selectedImageUrl, setSelectedImageUrl] = React.useState(null);
+
+  // Create display images BEFORE using them in the hook
+  const displayImages = images.map(image => {
+    // Check if there's an active version for this image
+    const activeVersionId = activeVersions[image.id];
+    
+    // If no active version, just return the original image
+    if (!activeVersionId) return image;
+    
+    // Find the version data
+    const imageVersions = versions[image.id] || [];
+    const activeVersion = imageVersions.find(v => v.id === activeVersionId);
+    
+    if (!activeVersion) return image;
+    
+    // Create a new object with image data as base, overlaid with version data
+    return {
+      ...image,
+      // Apply each field from the version if it exists
+      name_prefix: activeVersion.name_prefix ?? image.name_prefix ?? "",
+      given_name: activeVersion.given_name ?? image.given_name ?? "",
+      middle_name: activeVersion.middle_name ?? image.middle_name ?? "",
+      family_name: activeVersion.family_name ?? image.family_name ?? "",
+      name_suffix: activeVersion.name_suffix ?? image.name_suffix ?? "",
+      job_title: activeVersion.job_title ?? image.job_title ?? "",
+      department: activeVersion.department ?? image.department ?? "",
+      organization_name: activeVersion.organization_name ?? image.organization_name ?? "",
+      phone_numbers: activeVersion.phone_numbers || image.phone_numbers || [],
+      email_addresses: activeVersion.email_addresses || image.email_addresses || [],
+      url_addresses: activeVersion.url_addresses || image.url_addresses || [],
+      postal_addresses: activeVersion.postal_addresses || image.postal_addresses || [],
+      // Add indicator that this is a version overlay
+      _displayedVersionId: activeVersionId,
+      _versionTag: activeVersion.tag
+    };
+  });
+
+  // AFTER creating displayImages, now we can use the hook
   const {
     editMode,
     editableImages,
@@ -22,56 +61,8 @@ function DatabaseViewer() {
     handleEditToggle,
     handleInputChange,
     handleArrayInputChange
-  } = useImageEditor(images, updateImage, updateVersionData, activeVersions);
+  } = useImageEditor(displayImages, updateImage, updateVersionData, activeVersions);
 
-  const [selectedImageUrl, setSelectedImageUrl] = React.useState(null);
-
-  console.log("DatabaseViewer received images:", images);
-  console.log("Active versions:", activeVersions);
-  console.log("Versions data:", versions);
-  
-  // Get image data with version overlay if available
-  const getDisplayImages = () => {
-    return images.map(image => {
-      // Check if there's an active version for this image
-      const activeVersionId = activeVersions[image.id];
-      
-      // If no active version, just return the original image
-      if (!activeVersionId) return image;
-      
-      // Find the version data
-      const imageVersions = versions[image.id] || [];
-      const activeVersion = imageVersions.find(v => v.id === activeVersionId);
-      
-      if (!activeVersion) return image;
-      
-      console.log(`Applying version ${activeVersionId} (${activeVersion.tag}) to image ${image.id}`);
-      
-      // Create a new object with image data as base, overlaid with version data
-      return {
-        ...image,
-        // Apply each field from the version if it exists
-        name_prefix: activeVersion.name_prefix ?? "",
-        given_name: activeVersion.given_name ?? "",
-        middle_name: activeVersion.middle_name ?? "",
-        family_name: activeVersion.family_name ?? "",
-        name_suffix: activeVersion.name_suffix ?? "",
-        job_title: activeVersion.job_title ?? "",
-        department: activeVersion.department ?? "",
-        organization_name: activeVersion.organization_name ?? "",
-        phone_numbers: activeVersion.phone_numbers || "",
-        email_addresses: activeVersion.email_addresses || "",
-        url_addresses: activeVersion.url_addresses || "",
-        postal_addresses: activeVersion.postal_addresses || "",
-        // Add indicator that this is a version overlay
-        _displayedVersionId: activeVersionId,
-        _versionTag: activeVersion.tag
-      };
-    });
-  };
-
-  const displayImages = getDisplayImages();
-  
   if (!images?.length) {
     return (
       <div className="text-text-muted text-center py-8">
