@@ -424,7 +424,7 @@ class ImageDatabase:
 
     def _copy_version_data(self, conn, source_version_id: int, target_version_id: int) -> None:
         """
-        Copy data from one version to another.
+        Copy data from one version to another, ensuring ALL fields are properly copied.
         
         Args:
             conn: SQLite connection
@@ -432,80 +432,200 @@ class ImageDatabase:
             target_version_id: ID of the target version
         """
         cursor = conn.cursor()
+        logger.info(f"Copying data from version {source_version_id} to version {target_version_id}")
         
-        # Copy main data
-        cursor.execute("""
-            SELECT * FROM version_data WHERE version_id = ?
-        """, (source_version_id,))
-        main_data = cursor.fetchone()
-        
-        if main_data:
-            # Convert row to dict if it's a Row object
-            if isinstance(main_data, sqlite3.Row):
-                main_data = dict(main_data)
-                # Remove version_id from source data
-                if 'version_id' in main_data:
-                    del main_data['version_id']
+        try:
+            # First check if source_version_id exists
+            cursor.execute("SELECT id FROM image_versions WHERE id = ?", (source_version_id,))
+            if not cursor.fetchone():
+                logger.error(f"Source version ID {source_version_id} not found")
+                return
+                
+            # Get image_id from the source version for copying directly from base image if needed
+            cursor.execute("SELECT image_id FROM image_versions WHERE id = ?", (source_version_id,))
+            image_id = cursor.fetchone()[0]
+            logger.info(f"Source version belongs to image {image_id}")
             
-            # Prepare field names and values
-            fields = list(main_data.keys()) if isinstance(main_data, dict) else [desc[0] for desc in cursor.description if desc[0] != 'version_id']
+            # 1. Copy main version data
+            cursor.execute("SELECT * FROM version_data WHERE version_id = ?", (source_version_id,))
+            main_data = cursor.fetchone()
             
-            if fields:
-                values = list(main_data.values()) if isinstance(main_data, dict) else [value for i, value in enumerate(main_data) if cursor.description[i][0] != 'version_id']
+            if main_data:
+                logger.info("Copying main version data")
                 
-                # Create placeholders and build query
-                fields_str = ', '.join(fields)
-                placeholders = ', '.join(['?'] * len(values))
+                # Convert row to dict if it's a Row object
+                if isinstance(main_data, sqlite3.Row):
+                    main_data = dict(main_data)
+                    # Remove version_id from source data
+                    main_data.pop('version_id', None)
                 
-                insert_query = f"""
-                    INSERT INTO version_data (version_id, {fields_str})
-                    VALUES (?, {placeholders})
-                """
+                # Prepare field names and values
+                if isinstance(main_data, dict):
+                    fields = list(main_data.keys())
+                    values = list(main_data.values())
+                else:
+                    fields = [desc[0] for desc in cursor.description if desc[0] != 'version_id']
+                    values = [value for i, value in enumerate(main_data) if cursor.description[i][0] != 'version_id']
                 
-                cursor.execute(insert_query, [target_version_id] + values)
-        
-        # Copy phone numbers
-        cursor.execute("""
-            INSERT INTO version_phone_numbers (version_id, phone_number)
-            SELECT ?, phone_number
-            FROM version_phone_numbers
-            WHERE version_id = ?
-        """, (target_version_id, source_version_id))
-        
-        # Copy email addresses
-        cursor.execute("""
-            INSERT INTO version_email_addresses (version_id, email_address)
-            SELECT ?, email_address
-            FROM version_email_addresses
-            WHERE version_id = ?
-        """, (target_version_id, source_version_id))
-        
-        # Copy postal addresses
-        cursor.execute("""
-            INSERT INTO version_postal_addresses 
-            (version_id, street, sub_locality, city, sub_administrative_area, 
-            state, postal_code, country, iso_country_code)
-            SELECT ?, street, sub_locality, city, sub_administrative_area, 
-                state, postal_code, country, iso_country_code
-            FROM version_postal_addresses
-            WHERE version_id = ?
-        """, (target_version_id, source_version_id))
-        
-        # Copy URL addresses
-        cursor.execute("""
-            INSERT INTO version_url_addresses (version_id, url)
-            SELECT ?, url
-            FROM version_url_addresses
-            WHERE version_id = ?
-        """, (target_version_id, source_version_id))
-        
-        # Copy social profiles
-        cursor.execute("""
-            INSERT INTO version_social_profiles (version_id, service, url, username)
-            SELECT ?, service, url, username
-            FROM version_social_profiles
-            WHERE version_id = ?
-        """, (target_version_id, source_version_id))
+                if fields:
+                    # Create placeholders and build query
+                    fields_str = ', '.join(fields)
+                    placeholders = ', '.join(['?'] * len(values))
+                    
+                    # Use INSERT OR REPLACE to handle case when record might already exist
+                    insert_query = f"""
+                        INSERT OR REPLACE INTO version_data (version_id, {fields_str})
+                        VALUES (?, {placeholders})
+                    """
+                    
+                    cursor.execute(insert_query, [target_version_id] + values)
+                    logger.info(f"Copied {len(fields)} main data fields")
+            else:
+                # If no version data, copy from the base image
+                logger.info("No source version data, copying from base image")
+                cursor.execute("""
+                    SELECT name_prefix, given_name, middle_name, family_name, name_suffix,
+                        job_title, department, organization_name
+                    FROM images WHERE id = ?
+                """, (image_id,))
+                
+                base_image_data = cursor.fetchone()
+                if base_image_data:
+                    if isinstance(base_image_data, sqlite3.Row):
+                        base_image_dict = dict(base_image_data)
+                        fields = list(base_image_dict.keys())
+                        values = list(base_image_dict.values())
+                    else:
+                        fields = [desc[0] for desc in cursor.description]
+                        values = list(base_image_data)
+                    
+                    fields_str = ', '.join(fields)
+                    placeholders = ', '.join(['?'] * len(values))
+                    
+                    insert_query = f"""
+                        INSERT OR REPLACE INTO version_data (version_id, {fields_str})
+                        VALUES (?, {placeholders})
+                    """
+                    
+                    cursor.execute(insert_query, [target_version_id] + values)
+                    logger.info(f"Copied {len(fields)} fields from base image")
+            
+            # 2. Copy phone numbers
+            cursor.execute("""
+                INSERT INTO version_phone_numbers (version_id, phone_number)
+                SELECT ?, phone_number
+                FROM version_phone_numbers
+                WHERE version_id = ?
+            """, (target_version_id, source_version_id))
+            copied_phones = cursor.rowcount
+            
+            # If no phone numbers in the source version, copy from base image
+            if copied_phones == 0:
+                cursor.execute("""
+                    INSERT INTO version_phone_numbers (version_id, phone_number)
+                    SELECT ?, phone_number
+                    FROM phone_numbers
+                    WHERE image_id = ?
+                """, (target_version_id, image_id))
+                copied_phones = cursor.rowcount
+                
+            logger.info(f"Copied {copied_phones} phone numbers")
+            
+            # 3. Copy email addresses
+            cursor.execute("""
+                INSERT INTO version_email_addresses (version_id, email_address)
+                SELECT ?, email_address
+                FROM version_email_addresses
+                WHERE version_id = ?
+            """, (target_version_id, source_version_id))
+            copied_emails = cursor.rowcount
+            
+            # If no emails in the source version, copy from base image
+            if copied_emails == 0:
+                cursor.execute("""
+                    INSERT INTO version_email_addresses (version_id, email_address)
+                    SELECT ?, email_address
+                    FROM email_addresses
+                    WHERE image_id = ?
+                """, (target_version_id, image_id))
+                copied_emails = cursor.rowcount
+                
+            logger.info(f"Copied {copied_emails} email addresses")
+            
+            # 4. Copy postal addresses
+            cursor.execute("""
+                INSERT INTO version_postal_addresses 
+                (version_id, street, sub_locality, city, sub_administrative_area, 
+                state, postal_code, country, iso_country_code)
+                SELECT ?, street, sub_locality, city, sub_administrative_area, 
+                    state, postal_code, country, iso_country_code
+                FROM version_postal_addresses
+                WHERE version_id = ?
+            """, (target_version_id, source_version_id))
+            copied_addresses = cursor.rowcount
+            
+            # If no addresses in the source version, copy from base image
+            if copied_addresses == 0:
+                cursor.execute("""
+                    INSERT INTO version_postal_addresses 
+                    (version_id, street, sub_locality, city, sub_administrative_area, 
+                    state, postal_code, country, iso_country_code)
+                    SELECT ?, street, sub_locality, city, sub_administrative_area, 
+                        state, postal_code, country, iso_country_code
+                    FROM postal_addresses
+                    WHERE image_id = ?
+                """, (target_version_id, image_id))
+                copied_addresses = cursor.rowcount
+                
+            logger.info(f"Copied {copied_addresses} postal addresses")
+            
+            # 5. Copy URL addresses
+            cursor.execute("""
+                INSERT INTO version_url_addresses (version_id, url)
+                SELECT ?, url
+                FROM version_url_addresses
+                WHERE version_id = ?
+            """, (target_version_id, source_version_id))
+            copied_urls = cursor.rowcount
+            
+            # If no URLs in the source version, copy from base image
+            if copied_urls == 0:
+                cursor.execute("""
+                    INSERT INTO version_url_addresses (version_id, url)
+                    SELECT ?, url
+                    FROM url_addresses
+                    WHERE image_id = ?
+                """, (target_version_id, image_id))
+                copied_urls = cursor.rowcount
+                
+            logger.info(f"Copied {copied_urls} URL addresses")
+            
+            # 6. Copy social profiles
+            cursor.execute("""
+                INSERT INTO version_social_profiles (version_id, service, url, username)
+                SELECT ?, service, url, username
+                FROM version_social_profiles
+                WHERE version_id = ?
+            """, (target_version_id, source_version_id))
+            copied_profiles = cursor.rowcount
+            
+            # If no profiles in the source version, copy from base image
+            if copied_profiles == 0:
+                cursor.execute("""
+                    INSERT INTO version_social_profiles (version_id, service, url, username)
+                    SELECT ?, service, url, username
+                    FROM social_profiles
+                    WHERE image_id = ?
+                """, (target_version_id, image_id))
+                copied_profiles = cursor.rowcount
+                
+            logger.info(f"Copied {copied_profiles} social profiles")
+            
+            logger.info(f"Successfully copied all data from version {source_version_id} to version {target_version_id}")
+            
+        except Exception as e:
+            logger.error(f"Error copying version data: {e}", exc_info=True)
+            raise
 
     def update_version(self, version_id: int, update_data: Dict[str, Any]) -> bool:
         """

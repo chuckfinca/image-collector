@@ -216,26 +216,53 @@ export const DatabaseProvider = ({ children }) => {
         [`version-${imageId}`]: { loading: true }
       }));
       
-      const result = await api.createVersion(imageId, {
+      // Ensure imageId is an integer
+      const numericImageId = parseInt(imageId, 10);
+      
+      // Ensure sourceVersionId is either null or an integer
+      let numericSourceVersionId = null;
+      if (sourceVersionId !== null && sourceVersionId !== undefined && sourceVersionId !== '') {
+        numericSourceVersionId = parseInt(sourceVersionId, 10);
+        
+        // Validate that parsed ID is a valid number
+        if (isNaN(numericSourceVersionId)) {
+          console.error(`Invalid sourceVersionId: ${sourceVersionId}`);
+          numericSourceVersionId = null;
+        }
+      }
+      
+      console.log(`Creating version for image ${numericImageId} with source ${numericSourceVersionId}`);
+      
+      const result = await api.createVersion(numericImageId, {
         tag,
-        source_version_id: sourceVersionId,
+        source_version_id: numericSourceVersionId,
         notes
       });
       
       // Refresh versions
-      await fetchVersions(imageId);
+      await fetchVersions(numericImageId);
       
       setOperationStatus(prev => ({
         ...prev,
-        [`version-${imageId}`]: { success: true }
+        [`version-${numericImageId}`]: { success: true }
       }));
       
       return result;
     } catch (error) {
+      console.error(`Error creating version for image ${imageId}:`, error);
       handleError(error, `version-${imageId}`);
       throw error;
+    } finally {
+      // Clear status after a delay
+      setTimeout(() => {
+        setOperationStatus(prev => {
+          const newStatus = { ...prev };
+          delete newStatus[`version-${imageId}`];
+          return newStatus;
+        });
+      }, 3000);
     }
-  }, [fetchVersions, handleError]);
+  }, [fetchVersions, handleError, api]);
   
   // Add this improved updateVersionData function to your DatabaseContext.jsx
 

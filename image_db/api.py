@@ -361,16 +361,37 @@ async def create_image_version(
     if not image_db:
         raise HTTPException(status_code=400, detail="Database not initialized")
     
+    # Log what we're doing
+    logger.info(f"Creating version for image {image_id} with data: {version_data.model_dump()}")
+    
+    # Validate source_version_id if provided
+    source_version_id = version_data.source_version_id
+    if source_version_id is not None:
+        try:
+            # Verify source version exists
+            with get_db_connection(image_db.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id FROM image_versions WHERE id = ?", (source_version_id,))
+                if not cursor.fetchone():
+                    logger.warning(f"Source version ID {source_version_id} not found, setting to None")
+                    source_version_id = None
+        except Exception as e:
+            logger.error(f"Error validating source version: {e}")
+            source_version_id = None
+    
     try:
+        # Create the version
         version_id = await image_db.create_version(
             image_id=image_id,
             tag=version_data.tag,
-            source_version_id=version_data.source_version_id,
+            source_version_id=source_version_id,
             notes=version_data.notes
         )
         
+        logger.info(f"Successfully created version {version_id} for image {image_id}")
         return {"success": True, "version_id": version_id}
     except Exception as e:
+        logger.error(f"Error creating version: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/versions/{image_id}")

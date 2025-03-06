@@ -7,13 +7,14 @@ function VersionSelector({ imageId }) {
     activeVersions, 
     setActiveVersions, 
     fetchVersions, 
-    createVersion 
+    createVersion,
+    images
   } = useDb();
   
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newVersionTag, setNewVersionTag] = useState('');
-  const [sourceVersionId, setSourceVersionId] = useState(null);
   const [notes, setNotes] = useState('');
+  const [creationMode, setCreationMode] = useState('copy'); // 'copy' or 'fresh'
   
   // Get versions for this image
   const imageVersions = versions[imageId] || [];
@@ -28,7 +29,7 @@ function VersionSelector({ imageId }) {
   }, [imageId, versions, fetchVersions]);
   
   const handleVersionChange = (e) => {
-    const versionId = parseInt(e.target.value);
+    const versionId = parseInt(e.target.value, 10);
     console.log(`Setting active version for image ${imageId} to ${versionId}`);
     
     if (versionId) {
@@ -49,8 +50,25 @@ function VersionSelector({ imageId }) {
   
   const handleCreateVersion = async (e) => {
     e.preventDefault();
+    
     try {
-      const result = await createVersion(imageId, newVersionTag, sourceVersionId, notes);
+      // Determine source version ID based on creation mode
+      let sourceVersionId = null;
+      
+      if (creationMode === 'copy') {
+        // Use the currently active version, or null if none is selected
+        sourceVersionId = activeVersionId || null;
+      }
+      
+      console.log(`Creating version with mode: ${creationMode}, sourceVersionId: ${sourceVersionId}`);
+      
+      const result = await createVersion(
+        imageId, 
+        newVersionTag, 
+        sourceVersionId, 
+        notes
+      );
+      
       console.log(`Created new version with ID: ${result.version_id}`);
       
       // Reset form
@@ -115,20 +133,36 @@ function VersionSelector({ imageId }) {
             />
           </div>
           
-          <div>
-            <label className="block text-xs text-text-muted">Base Version (optional)</label>
-            <select
-              value={sourceVersionId || ''}
-              onChange={(e) => setSourceVersionId(e.target.value ? parseInt(e.target.value) : null)}
-              className="w-full px-2 py-1 bg-background-alt border border-border rounded text-sm"
-            >
-              <option value="">Start from scratch</option>
-              {imageVersions.map(version => (
-                <option key={version.id} value={version.id}>
-                  {version.tag} ({new Date(version.created_at).toLocaleString()})
-                </option>
-              ))}
-            </select>
+          <div className="space-y-2">
+            <label className="block text-xs text-text-muted">Creation Method</label>
+            
+            <div className="flex flex-col space-y-1">
+              <label className="inline-flex items-center">
+                <input
+                  type="radio"
+                  name="creationMode"
+                  value="copy"
+                  checked={creationMode === 'copy'}
+                  onChange={() => setCreationMode('copy')}
+                  className="mr-2"
+                />
+                <span className="text-sm">
+                  Copy {activeVersionId ? 'current version' : 'base image'}
+                </span>
+              </label>
+              
+              <label className="inline-flex items-center">
+                <input
+                  type="radio"
+                  name="creationMode"
+                  value="fresh"
+                  checked={creationMode === 'fresh'}
+                  onChange={() => setCreationMode('fresh')}
+                  className="mr-2"
+                />
+                <span className="text-sm">Start fresh (blank version)</span>
+              </label>
+            </div>
           </div>
           
           <div>
