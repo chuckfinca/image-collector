@@ -7,12 +7,13 @@ export const useImageEditor = (images, updateImage, updateVersionData, activeVer
   const [validationState, setValidationState] = useState({});
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Reset editable images when source images change
+  // Set editable images ONLY when ENTERING edit mode, not when images change
   useEffect(() => {
-    if (editMode) {
+    if (editMode && editableImages.length === 0) {
+      // Only initialize when entering edit mode and not already initialized
       setEditableImages(JSON.parse(JSON.stringify(images)));
     }
-  }, [images, editMode]);
+  }, [editMode]); // Remove images from dependency array
 
   const validateFields = useCallback((imageId, fields) => {
     const newValidationState = { ...validationState };
@@ -75,11 +76,9 @@ export const useImageEditor = (images, updateImage, updateVersionData, activeVer
             const activeVersionId = activeVersions[image.id];
             
             if (activeVersionId) {
-              console.log(`Updating version ${activeVersionId} for image ${image.id} with changes:`, changes);
               // Update version data
               await updateVersionData(activeVersionId, changes);
             } else {
-              console.log(`Updating main image ${image.id} with changes:`, changes);
               // Update main image data
               await updateImage(image.id, changes);
             }
@@ -91,16 +90,13 @@ export const useImageEditor = (images, updateImage, updateVersionData, activeVer
 
       await Promise.all(updatePromises);
     } else {
-      // Enter edit mode
+      // Enter edit mode - initialize editable images here
       setEditableImages(JSON.parse(JSON.stringify(images)));
       setValidationState({});
     }
 
-    // Exit edit mode without resetting any other state
     setEditMode(!editMode);
     setHasChanges(false);
-    
-    // We intentionally don't reset activeVersions here so the UI stays on the same version
   }, [editMode, editableImages, images, hasChanges, validateFields, updateImage, updateVersionData, activeVersions]);
 
   const handleInputChange = useCallback((imageId, field, value) => {
