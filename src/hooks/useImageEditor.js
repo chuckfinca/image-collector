@@ -1,17 +1,18 @@
 import { useState, useCallback, useEffect } from 'react';
 import { validateField, validateArray } from '../utils/validation';
 
-// IMPORTANT: We're now passing displayImages (already overlaid with version data) rather than raw images
 export const useImageEditor = (displayImages, updateImage, updateVersionData, activeVersions) => {
   const [editMode, setEditMode] = useState(false);
   const [editableImages, setEditableImages] = useState([]);
   const [validationState, setValidationState] = useState({});
   const [hasChanges, setHasChanges] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Initialize editable images when entering edit mode using the displayImages
-  // which already have version data overlaid
+  // Initialize editable images ONLY when entering edit mode and not already initialized
   useEffect(() => {
-    if (editMode) {
+    if (editMode && !isInitialized) {
+      console.log('Initializing editable images for edit mode');
+      
       // Deep clone to avoid modifying the source
       const imagesForEdit = JSON.parse(JSON.stringify(displayImages));
       
@@ -25,8 +26,12 @@ export const useImageEditor = (displayImages, updateImage, updateVersionData, ac
       });
       
       setEditableImages(imagesForEdit);
+      setIsInitialized(true);
+    } else if (!editMode) {
+      // When exiting edit mode, mark as uninitialized for next time
+      setIsInitialized(false);
     }
-  }, [editMode, displayImages]);
+  }, [editMode, isInitialized, displayImages]);
 
   const validateFields = useCallback((imageId, fields) => {
     const newValidationState = { ...validationState };
@@ -61,6 +66,8 @@ export const useImageEditor = (displayImages, updateImage, updateVersionData, ac
   const handleEditToggle = useCallback(async () => {
     if (editMode && hasChanges) {
       // Save changes
+      console.log('Saving changes to editable images', editableImages);
+      
       const updatePromises = editableImages.map(async (image) => {
         // Find the corresponding displayed image to compare with
         const originalImage = displayImages.find(img => img.id === image.id);
@@ -109,6 +116,8 @@ export const useImageEditor = (displayImages, updateImage, updateVersionData, ac
   }, [editMode, editableImages, displayImages, hasChanges, validateFields, updateImage, updateVersionData]);
 
   const handleInputChange = useCallback((imageId, field, value) => {
+    console.log(`Changing field ${field} for image ${imageId} to:`, value);
+    
     setEditableImages(prev => 
       prev.map(img => 
         img.id === imageId 
@@ -122,6 +131,8 @@ export const useImageEditor = (displayImages, updateImage, updateVersionData, ac
 
   const handleArrayInputChange = useCallback((imageId, field, value, validationType) => {
     const arrayValue = value.split('\n').map(item => item.trim()).filter(Boolean);
+    
+    console.log(`Changing array field ${field} for image ${imageId} to:`, arrayValue);
     
     setEditableImages(prev => 
       prev.map(img => 
