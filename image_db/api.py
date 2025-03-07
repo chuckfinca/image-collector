@@ -364,20 +364,25 @@ async def create_image_version(
     # Log what we're doing
     logger.info(f"Creating version for image {image_id} with data: {version_data.model_dump()}")
     
-    # Validate source_version_id if provided
-    source_version_id = version_data.source_version_id
-    if source_version_id is not None:
-        try:
-            # Verify source version exists
-            with get_db_connection(image_db.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT id FROM image_versions WHERE id = ?", (source_version_id,))
-                if not cursor.fetchone():
-                    logger.warning(f"Source version ID {source_version_id} not found, setting to None")
-                    source_version_id = None
-        except Exception as e:
-            logger.error(f"Error validating source version: {e}")
-            source_version_id = None
+    # If creating a blank version, ignore source_version_id
+    if version_data.create_blank:
+        logger.info(f"Creating blank version for image {image_id}, ignoring source_version_id")
+        source_version_id = None
+    else:
+        # Validate source_version_id if provided
+        source_version_id = version_data.source_version_id
+        if source_version_id is not None:
+            try:
+                # Verify source version exists
+                with get_db_connection(image_db.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id FROM image_versions WHERE id = ?", (source_version_id,))
+                    if not cursor.fetchone():
+                        logger.warning(f"Source version ID {source_version_id} not found, setting to None")
+                        source_version_id = None
+            except Exception as e:
+                logger.error(f"Error validating source version: {e}")
+                source_version_id = None
     
     try:
         # Create the version
@@ -385,7 +390,8 @@ async def create_image_version(
             image_id=image_id,
             tag=version_data.tag,
             source_version_id=source_version_id,
-            notes=version_data.notes
+            notes=version_data.notes,
+            create_blank=version_data.create_blank  # Pass the create_blank flag
         )
         
         logger.info(f"Successfully created version {version_id} for image {image_id}")

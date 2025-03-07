@@ -72,6 +72,7 @@ class VersionCreate(BaseModel):
     tag: str
     source_version_id: Optional[int] = None
     notes: Optional[str] = None
+    create_blank: bool = False
 
 class VersionUpdate(BaseModel):
     tag: Optional[str] = None

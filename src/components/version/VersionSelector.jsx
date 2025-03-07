@@ -52,21 +52,28 @@ function VersionSelector({ imageId }) {
     e.preventDefault();
     
     try {
-      // Determine source version ID based on creation mode
+      // Determine parameters based on creation mode
       let sourceVersionId = null;
+      let createBlank = false;
       
       if (creationMode === 'copy') {
-        // Use the currently active version, or null if none is selected
+        // Use the currently active version, or null if none is selected (will copy from base)
         sourceVersionId = activeVersionId || null;
+        createBlank = false;
+      } else {
+        // For "fresh" mode, create a blank version
+        sourceVersionId = null;
+        createBlank = true;
       }
       
-      console.log(`Creating version with mode: ${creationMode}, sourceVersionId: ${sourceVersionId}`);
+      console.log(`Creating version with mode: ${creationMode}, sourceVersionId: ${sourceVersionId}, createBlank: ${createBlank}`);
       
       const result = await createVersion(
         imageId, 
         newVersionTag, 
         sourceVersionId, 
-        notes
+        notes,
+        createBlank  // Pass the createBlank flag
       );
       
       console.log(`Created new version with ID: ${result.version_id}`);
@@ -89,7 +96,7 @@ function VersionSelector({ imageId }) {
     } catch (error) {
       console.error('Failed to create version:', error);
     }
-  };
+  };  
   
   return (
     <div className="space-y-3 p-2 border border-border rounded bg-background-alt/50">
@@ -160,7 +167,7 @@ function VersionSelector({ imageId }) {
                   onChange={() => setCreationMode('fresh')}
                   className="mr-2"
                 />
-                <span className="text-sm">Start fresh (blank version)</span>
+                <span className="text-sm">Start fresh</span>
               </label>
             </div>
           </div>

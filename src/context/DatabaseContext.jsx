@@ -209,7 +209,7 @@ export const DatabaseProvider = ({ children }) => {
   }, [handleError]);
 
   // Versioning operations
-  const createVersion = useCallback(async (imageId, tag, sourceVersionId = null, notes = '') => {
+  const createVersion = useCallback(async (imageId, tag, sourceVersionId = null, notes = '', createBlank = false) => {
     try {
       setOperationStatus(prev => ({
         ...prev,
@@ -231,12 +231,13 @@ export const DatabaseProvider = ({ children }) => {
         }
       }
       
-      console.log(`Creating version for image ${numericImageId} with source ${numericSourceVersionId}`);
+      console.log(`Creating version for image ${numericImageId} with source ${numericSourceVersionId}, createBlank=${createBlank}`);
       
       const result = await api.createVersion(numericImageId, {
         tag,
         source_version_id: numericSourceVersionId,
-        notes
+        notes,
+        create_blank: createBlank  // Pass the createBlank flag
       });
       
       // Refresh versions

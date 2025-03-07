@@ -369,7 +369,9 @@ class ImageDatabase:
             logger.info(f"Error updating image: {e}")
             return False
         
-    async def create_version(self, image_id: int, tag: str, source_version_id: int = None, notes: str = None) -> int:
+    # In database.py, modify the create_version function to accept a create_blank parameter
+
+    async def create_version(self, image_id: int, tag: str, source_version_id: int = None, notes: str = None, create_blank: bool = False) -> int:
         """
         Create a new version for an image.
         
@@ -378,6 +380,7 @@ class ImageDatabase:
             tag: Tag/label for this version (e.g., "extracted", "verified")
             source_version_id: Optional source version to copy data from
             notes: Optional notes about this version
+            create_blank: If True, create a completely blank version with no data copied
             
         Returns:
             ID of the new version
@@ -407,8 +410,20 @@ class ImageDatabase:
                     WHERE image_id = ? AND id != ?
                 """, (image_id, version_id))
                 
+                # If creating a blank version, add an empty record with no data
+                if create_blank:
+                    logger.info(f"Creating empty version {version_id} for image {image_id}")
+                    cursor.execute("""
+                        INSERT INTO version_data (version_id, name_prefix, given_name, middle_name, 
+                                                family_name, name_suffix, job_title, department, 
+                                                organization_name)
+                        VALUES (?, '', '', '', '', '', '', '', '')
+                    """, (version_id,))
+                    
+                    # We don't need to copy any other data for a blank version
+                    
                 # If copying from existing version, copy the data
-                if source_version_id:
+                elif source_version_id:
                     # Verify source version exists
                     cursor.execute("SELECT id FROM image_versions WHERE id = ?", (source_version_id,))
                     if not cursor.fetchone():
@@ -416,6 +431,15 @@ class ImageDatabase:
                         raise ValueError(f"Source version ID {source_version_id} not found")
                     
                     self._copy_version_data(conn, source_version_id, version_id)
+                else:
+                    # No source version provided, copy from base image
+                    logger.info(f"No source version provided for version {version_id}, copying from base image {image_id}")
+                    # Get image_id from the version
+                    cursor.execute("SELECT image_id FROM image_versions WHERE id = ?", (version_id,))
+                    
+                    # We'll use the _copy_version_data method's fallback to copy from base image
+                    # when the source version data is not found
+                    self._copy_version_data(conn, -1, version_id)  # Use an invalid source ID to trigger base image copy
                     
                 return version_id
         except Exception as e:
