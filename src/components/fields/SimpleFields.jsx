@@ -15,18 +15,40 @@ export const TextField = ({ label, value, onChange, disabled }) => (
 );
 
 // Field for arrays (phone numbers, emails, etc.)
-export const ArrayField = ({ label, values, onChange, disabled }) => (
-  <div className="space-y-1">
-    <label className="block text-xs text-text-muted">{label}</label>
-    <textarea
-      value={(values || []).join('\n')}
-      onChange={(e) => onChange(e.target.value.split('\n').filter(item => item.trim()))}
-      disabled={disabled}
-      rows={3}
-      className="w-full px-2 py-1 bg-background-alt border border-border rounded text-sm"
-    />
-  </div>
-);
+export const ArrayField = ({ label, values = [], onChange, disabled }) => {
+    // Convert array to string for editing
+    const [text, setText] = React.useState((values || []).join('\n'));
+    
+    // Update the parent component when text changes
+    React.useEffect(() => {
+      if (!disabled) {
+        const newArray = text.split('\n').filter(item => item.trim());
+        onChange(newArray);
+      }
+    }, [text, onChange, disabled]);
+    
+    // Update internal state when values change from parent
+    React.useEffect(() => {
+      setText((values || []).join('\n'));
+    }, [values]);
+    
+    return (
+      <div className="space-y-1">
+        <label className="block text-xs text-text-muted">{label}</label>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          disabled={disabled}
+          rows={3}
+          placeholder={`Enter one ${label.toLowerCase()} per line`}
+          className="w-full px-2 py-1 bg-background-alt border border-border rounded text-sm"
+        />
+        <div className="text-xs text-text-muted">
+          {values?.length || 0} item(s) • Press Enter after each entry
+        </div>
+      </div>
+    );
+  };
 
 // Simplified postal address component
 export const AddressField = ({ addresses, onChange, disabled, label }) => {

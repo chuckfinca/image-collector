@@ -19,13 +19,14 @@ export const sanitizeContactData = (data) => {
           .filter(item => item !== '');
           
         // For email addresses, do basic validation
-        if (key === 'email_addresses') {
-          result[key] = cleanArray.filter(email => 
-            typeof email === 'string' && email.includes('@') && email.includes('.')
-          );
-        } else {
-          result[key] = cleanArray;
-        }
+        // if (key === 'email_addresses') {
+        //   result[key] = cleanArray.filter(email => 
+        //     typeof email === 'string' && email.includes('@') && email.includes('.')
+        //   );
+        // } else {
+        //   result[key] = cleanArray;
+        // }
+        result[key] = cleanArray;
       }
       // Handle postal_addresses array specially
       else if (key === 'postal_addresses' && Array.isArray(value)) {
