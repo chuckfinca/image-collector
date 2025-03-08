@@ -15,36 +15,50 @@ export const TextField = ({ label, value, onChange, disabled }) => (
 );
 
 // Field for arrays (phone numbers, emails, etc.)
-export const ArrayField = ({ label, values = [], onChange, disabled }) => {
-    // Convert array to string for editing
+export const ArrayField = ({ label = "Item", values = [], onChange, disabled }) => {
+    // Reference previous values to prevent unnecessary updates
+    const valuesRef = React.useRef(values);
+    
+    // Only set state from props on initial render or when props genuinely change
     const [text, setText] = React.useState((values || []).join('\n'));
     
-    // Update the parent component when text changes
-    React.useEffect(() => {
+    // Handle local changes without triggering re-renders in parent
+    const handleTextChange = (e) => {
+      const newText = e.target.value;
+      setText(newText);
+      
+      // Only update parent if not disabled
       if (!disabled) {
-        const newArray = text.split('\n').filter(item => item.trim());
-        onChange(newArray);
+        const newArray = newText.split('\n').filter(item => item.trim());
+        // Only call onChange if the array actually changed
+        if (JSON.stringify(newArray) !== JSON.stringify(valuesRef.current)) {
+          valuesRef.current = newArray;
+          onChange(newArray);
+        }
       }
-    }, [text, onChange, disabled]);
+    };
     
-    // Update internal state when values change from parent
+    // Update from props only when values actually change (and not on every render)
     React.useEffect(() => {
-      setText((values || []).join('\n'));
+      if (JSON.stringify(values) !== JSON.stringify(valuesRef.current)) {
+        valuesRef.current = values;
+        setText((values || []).join('\n'));
+      }
     }, [values]);
     
     return (
       <div className="space-y-1">
-        <label className="block text-xs text-text-muted">{label}</label>
+        {label && <label className="block text-xs text-text-muted">{label}</label>}
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={handleTextChange}
           disabled={disabled}
           rows={3}
-          placeholder={`Enter one ${label.toLowerCase()} per line`}
+          placeholder="Enter one item per line"
           className="w-full px-2 py-1 bg-background-alt border border-border rounded text-sm"
         />
         <div className="text-xs text-text-muted">
-          {values?.length || 0} item(s) • Press Enter after each entry
+          {values?.length || 0} items • Press Enter after each entry
         </div>
       </div>
     );
