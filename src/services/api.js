@@ -86,6 +86,13 @@ export const api = {
       body: JSON.stringify(data),
     });
     return handleResponse(response);
+  },
+  
+  deleteVersion: async (versionId) => {
+    const response = await fetch(`${API_BASE_URL}/version/${versionId}`, {
+      method: 'DELETE',
+    });
+    return handleResponse(response);
   }
 };
 
@@ -96,4 +103,3 @@ const handleResponse = async (response) => {
   }
   return response.json();
 };
-

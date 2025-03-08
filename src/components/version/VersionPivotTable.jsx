@@ -4,7 +4,7 @@ import { sanitizeContactData, detectChanges } from '../../utils/data-sanitizatio
 
 
 function VersionPivotTable({ imageId, onClose }) {
-  const { versions, fetchVersions, updateVersionData } = useDb();
+  const { versions, fetchVersions, updateVersionData, deleteVersion, operationStatus } = useDb();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editMode, setEditMode] = useState(false);
@@ -187,6 +187,37 @@ function VersionPivotTable({ imageId, onClose }) {
       return newData;
     });
   };
+
+// Handle delete version
+const handleDeleteVersion = async (versionId) => {
+  // Do not allow deleting if there's only one version
+  if (imageVersions.length <= 1) {
+    alert("Cannot delete the only version for this image.");
+    return;
+  }
+
+  // Get the version details for confirmation
+  const version = imageVersions.find(v => v.id === versionId);
+  if (!version) return;
+
+  // Confirm deletion
+  if (!window.confirm(`Are you sure you want to delete version "${version.tag}"? This action cannot be undone.`)) {
+    return;
+  }
+
+  try {
+    // Delete the version
+    await deleteVersion(versionId);
+    
+    // If we're in edit mode and deleting a version that's being edited, exit edit mode
+    if (editMode && editableData[versionId]) {
+      setEditMode(false);
+    }
+  } catch (error) {
+    console.error("Failed to delete version:", error);
+    alert(`Failed to delete version: ${error.message}`);
+  }
+};
   
 // Save all changes
 const handleSaveChanges = async () => {
@@ -508,14 +539,34 @@ const handleSaveChanges = async () => {
               <th className="p-3 text-left text-sm font-medium border-b border-r border-border">Field</th>
               {imageVersions.map(version => (
                 <th 
-                  key={version.id} 
-                  className="p-3 text-left text-sm font-medium border-b border-r border-border"
-                >
-                  <div>{version.tag}</div>
-                  <div className="text-xs text-text-muted">
-                    {new Date(version.created_at).toLocaleString()}
+                key={version.id} 
+                className="p-3 text-left text-sm font-medium border-b border-r border-border"
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div>{version.tag}</div>
+                    <div className="text-xs text-text-muted">
+                      {new Date(version.created_at).toLocaleString()}
+                    </div>
                   </div>
-                </th>
+                  {!editMode && imageVersions.length > 1 && (
+                    <button
+                      onClick={() => handleDeleteVersion(version.id)}
+                      disabled={operationStatus[`delete-version-${version.id}`]?.loading}
+                      className="ml-2 p-1 text-error bg-background rounded hover:bg-background-alt/90 transition-colors"
+                      title="Delete Version"
+                    >
+                      {operationStatus[`delete-version-${version.id}`]?.loading ? (
+                        <span className="inline-block animate-spin h-4 w-4 border-2 border-error border-t-transparent rounded-full"></span>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </th>
               ))}
             </tr>
           </thead>

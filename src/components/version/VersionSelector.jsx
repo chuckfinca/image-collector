@@ -9,7 +9,8 @@ function VersionSelector({ imageId }) {
     setActiveVersions, 
     fetchVersions, 
     createVersion,
-    images
+    deleteVersion,
+    operationStatus
   } = useDb();
   
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -21,6 +22,9 @@ function VersionSelector({ imageId }) {
   // Get versions for this image
   const imageVersions = versions[imageId] || [];
   const activeVersionId = activeVersions[imageId];
+  
+  // Check if delete operation is in progress
+  const isDeleting = activeVersionId && operationStatus[`delete-version-${activeVersionId}`]?.loading;
   
   useEffect(() => {
     // Only fetch versions once when the component mounts or if versions are empty
@@ -109,6 +113,33 @@ function VersionSelector({ imageId }) {
     setShowPivotModal(true);
   };
   
+  // Handle delete version
+  const handleDeleteVersion = async () => {
+    if (!activeVersionId) return;
+    
+    // Get active version details for confirmation message
+    const activeVersion = imageVersions.find(v => v.id === activeVersionId);
+    if (!activeVersion) return;
+    
+    // Check if this is the only version
+    if (imageVersions.length <= 1) {
+      alert("Cannot delete the only version for this image.");
+      return;
+    }
+    
+    // Confirm deletion
+    if (!window.confirm(`Are you sure you want to delete version "${activeVersion.tag}"? This action cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      // Delete the version
+      await deleteVersion(activeVersionId);
+    } catch (error) {
+      console.error("Failed to delete version:", error);
+    }
+  };
+  
   return (
     <>
       <div className="space-y-3 p-2 border border-border rounded bg-background-alt/50">
@@ -120,6 +151,7 @@ function VersionSelector({ imageId }) {
             value={activeVersionId || ''}
             onChange={handleVersionChange}
             className="flex-1 px-2 py-1 bg-background-alt border border-border rounded text-sm"
+            disabled={isDeleting}
           >
             <option value="">Base Image</option>
             {imageVersions.map(version => (
@@ -132,6 +164,7 @@ function VersionSelector({ imageId }) {
           <button 
             onClick={() => setShowCreateForm(!showCreateForm)}
             className="px-2 py-1 bg-secondary hover:bg-secondary/90 text-white rounded text-sm"
+            disabled={isDeleting}
           >
             {showCreateForm ? 'Cancel' : 'New Version'}
           </button>
@@ -213,15 +246,42 @@ function VersionSelector({ imageId }) {
           </div>
         )}
         
-        {/* Compare versions button */}
-        {imageVersions.length >= 2 && (
-          <button 
-            onClick={handleOpenPivotTable}
-            className="w-full px-2 py-1 text-sm bg-info hover:bg-info/90 text-white rounded transition-colors"
-          >
-            Compare All Versions
-          </button>
-        )}
+        {/* Version action buttons */}
+        <div className="flex space-x-2">
+          {/* Compare versions button */}
+          {imageVersions.length >= 2 && (
+            <button 
+              onClick={handleOpenPivotTable}
+              className="flex-1 px-2 py-1 text-sm bg-info hover:bg-info/90 text-white rounded transition-colors"
+              disabled={isDeleting}
+            >
+              Compare All Versions
+            </button>
+          )}
+          
+          {/* Delete button (only show if a version is selected) */}
+          {activeVersionId && imageVersions.length > 1 && (
+            <button 
+              onClick={handleDeleteVersion}
+              disabled={isDeleting}
+              className="px-3 py-1 text-sm bg-error hover:bg-error/90 text-white rounded transition-colors disabled:opacity-50"
+            >
+              {isDeleting ? (
+                <span className="flex items-center justify-center">
+                  <span className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full mr-1"></span>
+                  <span>Deleting...</span>
+                </span>
+              ) : (
+                <span className="flex items-center">
+                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete
+                </span>
+              )}
+            </button>
+          )}
+        </div>
       </div>
       
       {/* Pivot Table Modal */}

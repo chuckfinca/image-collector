@@ -428,3 +428,21 @@ async def update_version(
         return {"success": True, "message": "Version updated successfully"}
     else:
         raise HTTPException(status_code=500, detail="Failed to update version")
+    
+@router.delete("/version/{version_id}")
+async def delete_version(
+    version_id: int,
+    image_db: ImageDatabase = Depends(get_image_db)
+):
+    """Delete a specific version."""
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    logger.info(f"Deleting version {version_id}")
+    
+    success = image_db.delete_version(version_id)
+    
+    if success:
+        return {"success": True, "message": "Version deleted successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to delete version")

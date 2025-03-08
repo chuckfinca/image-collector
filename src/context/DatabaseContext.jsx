@@ -307,7 +307,88 @@ export const DatabaseProvider = ({ children }) => {
       handleError(error, `update-version-${versionId}`);
       throw error;
     }
-  }, [versions, handleError, fetchVersions, api]);  
+  }, [versions, handleError, fetchVersions, api]);
+
+  // Delete version
+  const deleteVersion = useCallback(async (versionId) => {
+    try {
+      console.log(`Deleting version ${versionId}`);
+      setOperationStatus(prev => ({
+        ...prev,
+        [`delete-version-${versionId}`]: { loading: true }
+      }));
+      
+      // Find the image ID associated with this version
+      let imageId = null;
+      for (const [imgId, versionList] of Object.entries(versions)) {
+        if (versionList.some(v => v.id === versionId)) {
+          imageId = parseInt(imgId);
+          break;
+        }
+      }
+      
+      if (!imageId) {
+        throw new Error(`Could not find image ID for version ${versionId}`);
+      }
+      
+      // Check if this is the only version
+      const imageVersions = versions[imageId] || [];
+      if (imageVersions.length <= 1) {
+        throw new Error("Cannot delete the only version for this image");
+      }
+      
+      // Make the API call to delete the version
+      await api.deleteVersion(versionId);
+      
+      // Refresh versions
+      await fetchVersions(imageId);
+      
+      // Check if we were deleting the active version
+      if (activeVersions[imageId] === versionId) {
+        // Get the updated versions
+        const updatedVersions = versions[imageId] || [];
+        
+        if (updatedVersions.length > 0) {
+          // Find the most recent version to make active
+          const mostRecentVersion = [...updatedVersions].sort(
+            (a, b) => new Date(b.created_at) - new Date(a.created_at)
+          )[0];
+          
+          setActiveVersions(prev => ({
+            ...prev,
+            [imageId]: mostRecentVersion.id
+          }));
+        } else {
+          // No versions left (should not happen), remove active version
+          setActiveVersions(prev => {
+            const newVersions = {...prev};
+            delete newVersions[imageId];
+            return newVersions;
+          });
+        }
+      }
+      
+      setOperationStatus(prev => ({
+        ...prev,
+        [`delete-version-${versionId}`]: { success: true }
+      }));
+      
+      return true;
+    } catch (error) {
+      console.error(`Error deleting version ${versionId}:`, error);
+      handleError(error, `delete-version-${versionId}`);
+      throw error;
+    } finally {
+      // Clear status after a delay
+      setTimeout(() => {
+        setOperationStatus(prev => {
+          const newStatus = { ...prev };
+          delete newStatus[`delete-version-${versionId}`];
+          return newStatus;
+        });
+      }, 3000);
+    }
+  }, [versions, activeVersions, fetchVersions, handleError]);
 
   const value = {
     // State
@@ -336,6 +417,7 @@ export const DatabaseProvider = ({ children }) => {
     fetchVersions,
     createVersion,
     updateVersionData,
+    deleteVersion,
     setActiveVersions
   };
 
