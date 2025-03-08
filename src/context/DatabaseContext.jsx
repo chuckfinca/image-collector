@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { api } from '../services/api';
+import { sanitizeContactData } from '../utils/data-sanitization';
 
 const DatabaseContext = createContext(null);
 
@@ -264,17 +265,27 @@ export const DatabaseProvider = ({ children }) => {
       }, 3000);
     }
   }, [fetchVersions, handleError, api]);
-  
-  // Add this improved updateVersionData function to your DatabaseContext.jsx
 
   const updateVersionData = useCallback(async (versionId, updatedData) => {
     try {
       console.log(`Updating version ${versionId} with data:`, updatedData);
       
-      // Store the current active versions to preserve them
-      const currentActiveVersions = {...activeVersions};
+      // Use the shared sanitization utility
+      const { sanitizedData, isValid } = sanitizeContactData(updatedData);
       
-      await api.updateVersion(versionId, updatedData);
+      if (!isValid) {
+        console.error(`Invalid data provided for version ${versionId}`);
+        throw new Error('Validation failed for version data');
+      }
+      
+      // Check if we have any data to update after sanitizing
+      if (Object.keys(sanitizedData).length === 0) {
+        console.log(`No valid data to update for version ${versionId}`);
+        return true; // Nothing to update, but not an error
+      }
+      
+      // Make the API call with sanitized data
+      await api.updateVersion(versionId, sanitizedData);
       
       // Find the image ID associated with this version
       let imageId = null;
@@ -287,37 +298,16 @@ export const DatabaseProvider = ({ children }) => {
       
       if (imageId) {
         console.log(`Refreshing versions for image ${imageId} after update`);
-        
-        // First, refresh the versions data
-        const versionsResponse = await api.getVersions(imageId);
-        
-        if (versionsResponse && versionsResponse.versions) {
-          console.log(`Received updated versions:`, versionsResponse.versions);
-          
-          // Update versions while preserving active selection
-          setVersions(prev => ({
-            ...prev,
-            [imageId]: versionsResponse.versions
-          }));
-          
-          // Ensure the active version stays selected
-          setActiveVersions(prev => ({
-            ...prev,
-            [imageId]: versionId
-          }));
-        }
-        
-        // Also refresh the main images to get latest data
-        await refreshImages();
+        await fetchVersions(imageId);
       }
       
       return true;
     } catch (error) {
+      console.error(`Error updating version ${versionId}:`, error);
       handleError(error, `update-version-${versionId}`);
       throw error;
     }
-  }, [versions, activeVersions, handleError, refreshImages]);
-  
+  }, [versions, handleError, fetchVersions, api]);  
 
   const value = {
     // State

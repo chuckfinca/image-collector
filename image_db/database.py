@@ -663,6 +663,8 @@ class ImageDatabase:
             True if successful, False otherwise
         """
         try:
+            logger.info(f"Updating version {version_id} with data: {update_data}")
+            
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
@@ -682,6 +684,7 @@ class ImageDatabase:
                 version_update_fields = {k: v for k, v in update_data.items() if k in main_fields}
                 
                 if version_update_fields:
+                    logger.info(f"Updating main fields for version {version_id}: {version_update_fields}")
                     # Check if record exists
                     cursor.execute("SELECT version_id FROM version_data WHERE version_id = ?", (version_id,))
                     if cursor.fetchone():
@@ -698,6 +701,7 @@ class ImageDatabase:
                 
                 # Update phone numbers
                 if 'phone_numbers' in update_data:
+                    logger.info(f"Updating phone numbers for version {version_id}")
                     cursor.execute("DELETE FROM version_phone_numbers WHERE version_id = ?", (version_id,))
                     for phone in (update_data['phone_numbers'] or []):
                         if phone and phone.strip():
@@ -708,6 +712,7 @@ class ImageDatabase:
                 
                 # Update email addresses
                 if 'email_addresses' in update_data:
+                    logger.info(f"Updating email addresses for version {version_id}")
                     cursor.execute("DELETE FROM version_email_addresses WHERE version_id = ?", (version_id,))
                     for email in (update_data['email_addresses'] or []):
                         if email and email.strip():
@@ -718,29 +723,48 @@ class ImageDatabase:
                 
                 # Update postal addresses
                 if 'postal_addresses' in update_data:
+                    logger.info(f"Updating postal addresses for version {version_id}")
                     cursor.execute("DELETE FROM version_postal_addresses WHERE version_id = ?", (version_id,))
-                    for addr in (update_data['postal_addresses'] or []):
-                        if any(value for key, value in addr.items() if key not in ['id', 'version_id'] and value):
-                            cursor.execute("""
-                                INSERT INTO version_postal_addresses (
-                                    version_id, street, sub_locality, city,
-                                    sub_administrative_area, state, postal_code,
-                                    country, iso_country_code
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """, (
-                                version_id, 
-                                addr.get('street', ''), 
-                                addr.get('sub_locality', ''),
-                                addr.get('city', ''), 
-                                addr.get('sub_administrative_area', ''),
-                                addr.get('state', ''), 
-                                addr.get('postal_code', ''),
-                                addr.get('country', ''), 
-                                addr.get('iso_country_code', '')
-                            ))
+                    
+                    # Make sure we have a list
+                    postal_addresses = update_data['postal_addresses'] or []
+                    if not isinstance(postal_addresses, list):
+                        postal_addresses = []
+                    
+                    for addr in postal_addresses:
+                        # Skip if not a dictionary
+                        if not isinstance(addr, dict):
+                            continue
+                            
+                        # Skip empty addresses
+                        if not any(value for key, value in addr.items() if key not in ['id', 'version_id'] and value):
+                            continue
+                        
+                        # Prepare values with defaults to avoid None/null issues
+                        street = addr.get('street', '')
+                        sub_locality = addr.get('sub_locality', '')
+                        city = addr.get('city', '')
+                        sub_administrative_area = addr.get('sub_administrative_area', '')
+                        state = addr.get('state', '')
+                        postal_code = addr.get('postal_code', '')
+                        country = addr.get('country', '')
+                        iso_country_code = addr.get('iso_country_code', '')
+                        
+                        cursor.execute("""
+                            INSERT INTO version_postal_addresses (
+                                version_id, street, sub_locality, city,
+                                sub_administrative_area, state, postal_code,
+                                country, iso_country_code
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            version_id, street, sub_locality, city,
+                            sub_administrative_area, state, postal_code,
+                            country, iso_country_code
+                        ))
                 
                 # Update URL addresses
                 if 'url_addresses' in update_data:
+                    logger.info(f"Updating URL addresses for version {version_id}")
                     cursor.execute("DELETE FROM version_url_addresses WHERE version_id = ?", (version_id,))
                     for url in (update_data['url_addresses'] or []):
                         if url and url.strip():
@@ -751,6 +775,7 @@ class ImageDatabase:
                 
                 # Update social profiles
                 if 'social_profiles' in update_data:
+                    logger.info(f"Updating social profiles for version {version_id}")
                     cursor.execute("DELETE FROM version_social_profiles WHERE version_id = ?", (version_id,))
                     for profile in (update_data['social_profiles'] or []):
                         if profile and (profile.get('service') or profile.get('username') or profile.get('url')):
@@ -771,6 +796,7 @@ class ImageDatabase:
                 }
                 
                 if metadata_fields:
+                    logger.info(f"Updating version metadata for version {version_id}: {metadata_fields}")
                     set_clause = ", ".join(f"{k} = ?" for k in metadata_fields.keys())
                     query = f"UPDATE image_versions SET {set_clause} WHERE id = ?"
                     cursor.execute(query, list(metadata_fields.values()) + [version_id])

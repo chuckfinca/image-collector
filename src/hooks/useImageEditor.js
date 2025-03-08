@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { validateField, validateArray } from '../utils/validation';
+import { sanitizeContactData, detectChanges } from '../utils/data-sanitization';
 
 export const useImageEditor = (displayImages, updateImage, updateVersionData, activeVersions) => {
   const [editMode, setEditMode] = useState(false);
@@ -71,27 +72,30 @@ export const useImageEditor = (displayImages, updateImage, updateVersionData, ac
       const updatePromises = editableImages.map(async (image) => {
         // Find the corresponding displayed image to compare with
         const originalImage = displayImages.find(img => img.id === image.id);
-        const changes = {};
-        let hasFieldChanges = false;
-
-        // Check each field for changes
+        
+        // Define fields to check for changes
         const fields = [
           'name_prefix', 'given_name', 'middle_name', 'family_name', 'name_suffix',
           'job_title', 'department', 'organization_name',
           'phone_numbers', 'email_addresses', 'url_addresses', 'postal_addresses'
         ];
 
-        fields.forEach(field => {
-          const oldValue = originalImage[field];
-          const newValue = image[field];
-          if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
-            changes[field] = newValue;
-            hasFieldChanges = true;
-          }
-        });
+        // Use the shared utility to detect changes and sanitize data
+        const { sanitizedData, validationResults, isValid } = sanitizeContactData(image, fields);
+        const { changes, hasChanges } = detectChanges(originalImage, sanitizedData, fields);
 
-        // Only update if there are actual changes
-        if (hasFieldChanges && validateFields(image.id, changes)) {
+        // Update validation state
+        const newValidationState = {
+          ...validationState,
+          [image.id]: {
+            ...(validationState[image.id] || {}),
+            ...validationResults
+          }
+        };
+        setValidationState(newValidationState);
+
+        // Only update if there are actual changes and data is valid
+        if (hasChanges && isValid) {
           try {
             // Use the _isVersionOverlay flag to determine where to save
             if (image._isVersionOverlay && image._versionId) {
@@ -104,16 +108,28 @@ export const useImageEditor = (displayImages, updateImage, updateVersionData, ac
           } catch (error) {
             console.error(`Failed to update for ${image.id}:`, error);
           }
+        } else if (!isValid) {
+          console.error(`Validation failed for image ${image.id}`);
+          return Promise.reject(new Error(`Validation failed for image ${image.id}`));
         }
       });
 
-      await Promise.all(updatePromises);
+      try {
+        await Promise.all(updatePromises);
+        // Toggle edit mode if all updates succeeded
+        setEditMode(false);
+        setHasChanges(false);
+      } catch (error) {
+        console.error('Some updates failed due to validation errors', error);
+        // Keep edit mode on if there were validation failures
+        return;
+      }
+    } else {
+      // Just toggle edit mode if we're not saving changes
+      setEditMode(!editMode);
+      setHasChanges(false);
     }
-
-    // Toggle edit mode
-    setEditMode(!editMode);
-    setHasChanges(false);
-  }, [editMode, editableImages, displayImages, hasChanges, validateFields, updateImage, updateVersionData]);
+  }, [editMode, editableImages, displayImages, hasChanges, validateFields, updateImage, updateVersionData, validationState]);
 
   const handleInputChange = useCallback((imageId, field, value) => {
     console.log(`Changing field ${field} for image ${imageId} to:`, value);

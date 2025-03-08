@@ -1,15 +1,46 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDb } from '../../context/DatabaseContext';
+import { sanitizeContactData, detectChanges } from '../../utils/data-sanitization';
+
 
 function VersionPivotTable({ imageId, onClose }) {
   const { versions, fetchVersions, updateVersionData } = useDb();
-  const [editMode, setEditMode] = useState(false);
-  const [editableData, setEditableData] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedFields, setSelectedFields] = useState([
-    'given_name', 'family_name', 'organization_name', 'job_title', 'phone_numbers', 'email_addresses'
-  ]);
+  const [editMode, setEditMode] = useState(false);
+  const [editableData, setEditableData] = useState({});
+  
+  // Define field groups
+  const fieldGroups = {
+    'Name Information': [
+      { id: 'name_prefix', label: 'Prefix' },
+      { id: 'given_name', label: 'Given Name' },
+      { id: 'middle_name', label: 'Middle Name' },
+      { id: 'family_name', label: 'Family Name' },
+      { id: 'name_suffix', label: 'Suffix' }
+    ],
+    'Work Information': [
+      { id: 'organization_name', label: 'Organization' },
+      { id: 'department', label: 'Department' },
+      { id: 'job_title', label: 'Job Title' }
+    ],
+    'Contact Information': [
+      { id: 'phone_numbers', label: 'Phone Numbers', isArray: true },
+      { id: 'email_addresses', label: 'Email Addresses', isArray: true },
+      { id: 'url_addresses', label: 'URLs', isArray: true },
+      { id: 'postal_addresses', label: 'Postal Addresses', isArray: true, isComplex: true }
+    ]
+  };
+
+  // Create a flat list of all field IDs (after field groups are defined)
+  const allFieldIds = useMemo(() => {
+    return Object.values(fieldGroups).flatMap(group => 
+      group.map(field => field.id)
+    );
+  }, []);  // Empty dependency array means this only runs once
+  
+  // Now initialize selectedFields with all fields
+  const [selectedFields, setSelectedFields] = useState(allFieldIds);
 
   // Fetch versions when component mounts
   useEffect(() => {
@@ -46,27 +77,6 @@ function VersionPivotTable({ imageId, onClose }) {
 
   const imageVersions = versions[imageId] || [];
 
-  // Group fields by category for the field selector
-  const fieldGroups = {
-    'Name Information': [
-      { id: 'name_prefix', label: 'Prefix' },
-      { id: 'given_name', label: 'Given Name' },
-      { id: 'middle_name', label: 'Middle Name' },
-      { id: 'family_name', label: 'Family Name' },
-      { id: 'name_suffix', label: 'Suffix' }
-    ],
-    'Work Information': [
-      { id: 'organization_name', label: 'Organization' },
-      { id: 'department', label: 'Department' },
-      { id: 'job_title', label: 'Job Title' }
-    ],
-    'Contact Information': [
-      { id: 'phone_numbers', label: 'Phone Numbers', isArray: true },
-      { id: 'email_addresses', label: 'Email Addresses', isArray: true },
-      { id: 'url_addresses', label: 'URLs', isArray: true }
-    ]
-  };
-
   // Toggle a field in the selected fields list
   const toggleField = (fieldId) => {
     setSelectedFields(prev => 
@@ -78,56 +88,218 @@ function VersionPivotTable({ imageId, onClose }) {
 
   // Handle input changes in edit mode
   const handleInputChange = (versionId, fieldId, value) => {
-    setEditableData(prev => ({
-      ...prev,
-      [versionId]: {
-        ...prev[versionId],
-        [fieldId]: value
+    console.log(`Changing field ${fieldId} for version ${versionId} to:`, value);
+    
+    setEditableData(prev => {
+      // Make sure the previous state exists and has the version
+      const newState = { ...prev };
+      if (!newState[versionId]) {
+        newState[versionId] = {};
       }
-    }));
+      
+      // Update the specific field
+      newState[versionId] = {
+        ...newState[versionId],
+        [fieldId]: value
+      };
+      
+      return newState;
+    });
   };
 
   // Handle array input changes (like phone numbers)
   const handleArrayInputChange = (versionId, fieldId, value) => {
-    const arrayValue = value.split('\n').map(item => item.trim()).filter(Boolean);
+    console.log(`Changing array field ${fieldId} for version ${versionId} to:`, value);
     
-    setEditableData(prev => ({
-      ...prev,
-      [versionId]: {
-        ...prev[versionId],
-        [fieldId]: arrayValue
+    // Convert the text input to an array
+    const arrayValue = value
+      .split('\n')
+      .map(item => item.trim())
+      .filter(Boolean);
+    
+    setEditableData(prev => {
+      // Make sure the previous state exists and has the version
+      const newState = { ...prev };
+      if (!newState[versionId]) {
+        newState[versionId] = {};
       }
-    }));
+      
+      // Update the specific field
+      newState[versionId] = {
+        ...newState[versionId],
+        [fieldId]: arrayValue
+      };
+      
+      return newState;
+    });
+  };
+  
+
+  const handleAddressChange = (versionId, addressIndex, field, value) => {
+    setEditableData(prev => {
+      const newData = {...prev};
+      
+      // Make sure the version exists
+      if (!newData[versionId]) {
+        newData[versionId] = {};
+      }
+      
+      // Make sure the postal_addresses array exists
+      if (!newData[versionId].postal_addresses) {
+        newData[versionId].postal_addresses = [];
+      }
+      
+      // Make sure the specific address object exists
+      if (!newData[versionId].postal_addresses[addressIndex]) {
+        newData[versionId].postal_addresses[addressIndex] = {};
+      }
+      
+      // Update the specific field
+      newData[versionId].postal_addresses[addressIndex][field] = value;
+      
+      return newData;
+    });
+  };
+  
+  const handleAddAddress = (versionId) => {
+    setEditableData(prev => {
+      const newData = {...prev};
+      
+      // Make sure the version exists
+      if (!newData[versionId]) {
+        newData[versionId] = {};
+      }
+      
+      // Make sure the postal_addresses array exists
+      if (!newData[versionId].postal_addresses) {
+        newData[versionId].postal_addresses = [];
+      }
+      
+      // Add a new empty address
+      newData[versionId].postal_addresses.push({
+        street: '',
+        city: '',
+        state: '',
+        postal_code: '',
+        country: ''
+      });
+      
+      return newData;
+    });
+  };
+  
+// Save all changes
+const handleSaveChanges = async () => {
+  // Track successful and failed updates
+  const results = {
+    success: [],
+    failed: []
   };
 
-  // Save all changes
-  const handleSaveChanges = async () => {
-    const updatePromises = Object.entries(editableData).map(async ([versionId, data]) => {
-      const originalVersion = versions[imageId].find(v => v.id === parseInt(versionId));
-      const changes = {};
-      let hasChanges = false;
-
-      // Find changes
-      selectedFields.forEach(field => {
-        if (JSON.stringify(originalVersion[field]) !== JSON.stringify(data[field])) {
-          changes[field] = data[field];
-          hasChanges = true;
+  // Keep track of validation errors
+  const validationErrors = {};
+  
+  console.log("Starting to save changes for versions:", Object.keys(editableData));
+  
+  // Process one version at a time to isolate failures
+  for (const [versionIdStr, data] of Object.entries(editableData)) {
+    try {
+      console.log(`Processing version ${versionIdStr}`);
+      const versionId = parseInt(versionIdStr, 10);
+      
+      // Skip if not a valid number
+      if (isNaN(versionId)) {
+        console.error(`Invalid version ID: ${versionIdStr}`);
+        results.failed.push(`Invalid version ID: ${versionIdStr}`);
+        continue;
+      }
+      
+      const originalVersion = versions[imageId]?.find(v => v.id === versionId);
+      
+      if (!originalVersion) {
+        console.error(`Original version with ID ${versionId} not found`);
+        results.failed.push(`Version ${versionId}: original not found`);
+        continue;
+      }
+      
+      console.log(`Found original version ${versionId}:`, originalVersion);
+      
+      // Make a copy to prevent modifying the original
+      const versionDataCopy = { ...data };
+      
+      // Convert any string arrays that might be stored as newline-separated text
+      ['phone_numbers', 'email_addresses', 'url_addresses'].forEach(field => {
+        if (typeof versionDataCopy[field] === 'string') {
+          versionDataCopy[field] = versionDataCopy[field]
+            .split('\n')
+            .map(item => item.trim())
+            .filter(Boolean);
         }
       });
-
+      
+      console.log(`Prepared version data for ${versionId}:`, versionDataCopy);
+      
+      // Only process fields that are currently selected in the UI
+      console.log(`Selected fields for validation: ${selectedFields.join(', ')}`);
+      
+      // Sanitize the data using the shared utility
+      const { sanitizedData, validationResults, isValid } = sanitizeContactData(versionDataCopy, selectedFields);
+      
+      // Store validation results
+      validationErrors[versionId] = validationResults;
+      
+      // Skip if validation failed
+      if (!isValid) {
+        console.error(`Validation failed for version ${versionId}:`, validationResults);
+        results.failed.push(`Version ${versionId}: validation failed`);
+        continue;
+      }
+      
+      console.log(`Validation passed for version ${versionId}`);
+      
+      // Detect what actually changed
+      const { changes, hasChanges } = detectChanges(originalVersion, sanitizedData, selectedFields);
+  
       // Update version if there are changes
       if (hasChanges) {
-        try {
-          await updateVersionData(parseInt(versionId), changes);
-        } catch (error) {
-          console.error(`Failed to update version ${versionId}:`, error);
-        }
+        console.log(`Updating version ${versionId} with changes:`, changes);
+        await updateVersionData(versionId, changes);
+        console.log(`Successfully updated version ${versionId}`);
+        results.success.push(versionId);
+      } else {
+        console.log(`No changes detected for version ${versionId}`);
       }
-    });
-
-    await Promise.all(updatePromises);
+    } catch (error) {
+      console.error(`Failed to update version ${versionIdStr}:`, error);
+      results.failed.push(versionIdStr);
+      // Continue with other versions even if one fails
+    }
+  }
+  
+  // Show detailed results in console
+  console.log("Update results:", results);
+  
+  // Show results to user if there were any failures
+  if (results.failed.length > 0) {
+    console.warn(`Updates: ${results.success.length} successful, ${results.failed.length} failed`);
+    // Show alert with more details
+    alert(`Some updates failed (${results.failed.length}). 
+    ${results.success.length} updated successfully.
+    Check console for details.`);
+  } else if (results.success.length > 0) {
+    alert(`Successfully updated ${results.success.length} versions.`);
+  } else {
+    alert("No changes were made.");
+  }
+  
+  // Refresh the versions data after all updates
+  await fetchVersions(imageId);
+  
+  // Exit edit mode only if there were no failures, otherwise keep the form open
+  if (results.failed.length === 0) {
     setEditMode(false);
-  };
+  }
+};
 
   // Render field content based on field type
   const renderFieldContent = (version, fieldId, isEditable = false) => {
@@ -140,13 +312,102 @@ function VersionPivotTable({ imageId, onClose }) {
     const versionData = isEditable ? (editableData[versionId] || {}) : version;
     
     // Safely check if the field exists in versionData
-    if (versionData === undefined || versionData[fieldId] === undefined) {
+    if (versionData === undefined) {
+      console.warn(`Version data for ${versionId} is undefined`);
       return '';
     }
     
     // Check if field is an array type
     const isArrayField = Array.isArray(versionData[fieldId]);
     
+    // Special handling for postal addresses
+    if (fieldId === 'postal_addresses') {
+      const addresses = versionData[fieldId] || [];
+      
+      if (isEditable) {
+        return (
+          <div className="space-y-2 max-h-40 overflow-y-auto">
+            {addresses.map((addr, idx) => (
+              <div key={idx} className="border border-border p-2 rounded bg-background-alt/50 text-sm">
+                <div className="grid grid-cols-2 gap-1">
+                  <div>
+                    <label className="text-xs text-text-muted">Street</label>
+                    <input
+                      value={addr?.street || ''}
+                      onChange={(e) => handleAddressChange(versionId, idx, 'street', e.target.value)}
+                      className="w-full px-2 py-1 text-sm border border-border rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-text-muted">City</label>
+                    <input
+                      value={addr?.city || ''}
+                      onChange={(e) => handleAddressChange(versionId, idx, 'city', e.target.value)}
+                      className="w-full px-2 py-1 text-sm border border-border rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-text-muted">State/Province</label>
+                    <input
+                      value={addr?.state || ''}
+                      onChange={(e) => handleAddressChange(versionId, idx, 'state', e.target.value)}
+                      className="w-full px-2 py-1 text-sm border border-border rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-text-muted">Postal Code</label>
+                    <input
+                      value={addr?.postal_code || ''}
+                      onChange={(e) => handleAddressChange(versionId, idx, 'postal_code', e.target.value)}
+                      className="w-full px-2 py-1 text-sm border border-border rounded"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs text-text-muted">Country</label>
+                    <input
+                      value={addr?.country || ''}
+                      onChange={(e) => handleAddressChange(versionId, idx, 'country', e.target.value)}
+                      className="w-full px-2 py-1 text-sm border border-border rounded"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button
+              onClick={() => handleAddAddress(versionId)}
+              className="w-full mt-1 px-2 py-1 text-xs bg-background-alt text-text-muted rounded hover:bg-background-alt/80 border border-border"
+            >
+              + Add Address
+            </button>
+          </div>
+        );
+      } else {
+        // Display mode for addresses
+        if (!addresses || addresses.length === 0) {
+          return <span className="text-text-muted text-sm">No addresses</span>;
+        }
+        
+        return (
+          <div className="space-y-2">
+            {addresses.map((addr, idx) => (
+              <div key={idx} className="text-sm">
+                {addr?.street && <div>{addr.street}</div>}
+                <div>
+                  {addr?.city && addr.city}
+                  {addr?.city && addr?.state && ', '}
+                  {addr?.state && addr.state}
+                  {(addr?.city || addr?.state) && addr?.postal_code && ' '}
+                  {addr?.postal_code && addr.postal_code}
+                </div>
+                {addr?.country && <div>{addr.country}</div>}
+              </div>
+            ))}
+          </div>
+        );
+      }
+    }
+    
+    // Handle regular array fields (like phone numbers, emails, URLs)
     if (isEditable) {
       return isArrayField ? (
         <textarea
@@ -157,7 +418,7 @@ function VersionPivotTable({ imageId, onClose }) {
       ) : (
         <input
           type="text"
-          value={versionData[fieldId] || ''}
+          value={versionData[fieldId] ?? ''}
           onChange={(e) => handleInputChange(versionId, fieldId, e.target.value)}
           className="w-full px-2 py-1 text-sm border border-border rounded"
         />
@@ -165,55 +426,19 @@ function VersionPivotTable({ imageId, onClose }) {
     } else {
       // Display mode
       if (isArrayField) {
+        if (!versionData[fieldId] || versionData[fieldId].length === 0) {
+          return <span className="text-text-muted text-sm">None</span>;
+        }
         return (versionData[fieldId] || []).map((item, idx) => (
           <div key={idx} className="mb-1">{item}</div>
         ));
       } else {
-        return versionData[fieldId] || '';
+        return versionData[fieldId] !== undefined ? 
+          versionData[fieldId] : 
+          <span className="text-text-muted text-sm">None</span>;
       }
     }
-  };
-
-  // Show loading state while fetching versions
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center p-8">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
-      </div>
-    );
-  }
-
-  // Show error state if there was an error
-  if (error) {
-    return (
-      <div className="p-4 text-center">
-        <div className="p-4 mb-4 bg-error/10 border border-error text-error rounded-lg">
-          <p>{error}</p>
-        </div>
-        <button 
-          onClick={onClose}
-          className="mt-2 px-4 py-2 bg-secondary text-white rounded hover:bg-secondary/90"
-        >
-          Close
-        </button>
-      </div>
-    );
-  }
-
-  // Show empty state if no versions exist
-  if (!imageVersions || imageVersions.length === 0) {
-    return (
-      <div className="p-4 text-center">
-        <p className="text-text-muted">No versions available for this image.</p>
-        <button 
-          onClick={onClose}
-          className="mt-4 px-4 py-2 bg-secondary text-white rounded hover:bg-secondary/90"
-        >
-          Close
-        </button>
-      </div>
-    );
-  }
+  };  
 
   return (
     <div className="p-4">

@@ -35,4 +35,20 @@ function VersionPivotModal({ imageId, onClose, isOpen }) {
   );
 }
 
+const getVersionFieldValue = (version, field) => {
+    // Handle missing version or undefined field
+    if (!version || version[field] === undefined || version[field] === null) {
+      return '';
+    }
+    
+    // Handle array fields
+    if (Array.isArray(version[field])) {
+      return version[field].join('\n'); // Or however you want to display arrays
+    }
+    
+    // Return string values directly
+    return version[field];
+  };
+  
+
 export default VersionPivotModal;
