@@ -29,99 +29,99 @@ export const ArrayField = ({ label, values, onChange, disabled }) => (
 );
 
 // Simplified postal address component
-export const AddressField = ({ addresses, onChange, disabled }) => {
-  // Helper to update a specific address field
-  const updateAddress = (index, field, value) => {
-    const newAddresses = [...(addresses || [])];
-    if (!newAddresses[index]) {
-      newAddresses[index] = {};
-    }
-    newAddresses[index] = { ...newAddresses[index], [field]: value };
-    onChange(newAddresses);
-  };
-
-  // Add a new empty address
-  const addAddress = () => {
-    onChange([...(addresses || []), { street: '', city: '', state: '', postal_code: '', country: '' }]);
-  };
-
-  // Remove an address
-  const removeAddress = (index) => {
-    const newAddresses = [...(addresses || [])];
-    newAddresses.splice(index, 1);
-    onChange(newAddresses);
-  };
-
-  return (
-    <div className="space-y-2">
-      <label className="block text-xs text-text-muted">{label || 'Addresses'}</label>
-      
-      <div className="space-y-3 max-h-60 overflow-y-auto">
-        {(addresses || []).map((address, index) => (
-          <div key={index} className="p-2 border border-border rounded bg-background-alt/50">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="col-span-2">
+export const AddressField = ({ addresses, onChange, disabled, label }) => {
+    // Helper to update a specific address field
+    const updateAddress = (index, field, value) => {
+      const newAddresses = [...(addresses || [])];
+      if (!newAddresses[index]) {
+        newAddresses[index] = {};
+      }
+      newAddresses[index] = { ...newAddresses[index], [field]: value };
+      onChange(newAddresses);
+    };
+  
+    // Add a new empty address
+    const addAddress = () => {
+      onChange([...(addresses || []), { street: '', city: '', state: '', postal_code: '', country: '' }]);
+    };
+  
+    // Remove an address
+    const removeAddress = (index) => {
+      const newAddresses = [...(addresses || [])];
+      newAddresses.splice(index, 1);
+      onChange(newAddresses);
+    };
+  
+    return (
+      <div className="space-y-2">
+        <label className="block text-xs text-text-muted">{label || 'Addresses'}</label>
+        
+        <div className="space-y-3 max-h-60 overflow-y-auto">
+          {(addresses || []).map((address, index) => (
+            <div key={index} className="p-2 border border-border rounded bg-background-alt/50">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="col-span-2">
+                  <input
+                    placeholder="Street"
+                    value={address.street || ''}
+                    onChange={(e) => updateAddress(index, 'street', e.target.value)}
+                    disabled={disabled}
+                    className="w-full px-2 py-1 text-sm border border-border rounded"
+                  />
+                </div>
                 <input
-                  placeholder="Street"
-                  value={address.street || ''}
-                  onChange={(e) => updateAddress(index, 'street', e.target.value)}
+                  placeholder="City"
+                  value={address.city || ''}
+                  onChange={(e) => updateAddress(index, 'city', e.target.value)}
+                  disabled={disabled}
+                  className="w-full px-2 py-1 text-sm border border-border rounded"
+                />
+                <input
+                  placeholder="State/Province"
+                  value={address.state || ''}
+                  onChange={(e) => updateAddress(index, 'state', e.target.value)}
+                  disabled={disabled}
+                  className="w-full px-2 py-1 text-sm border border-border rounded"
+                />
+                <input
+                  placeholder="Postal Code"
+                  value={address.postal_code || ''}
+                  onChange={(e) => updateAddress(index, 'postal_code', e.target.value)}
+                  disabled={disabled}
+                  className="w-full px-2 py-1 text-sm border border-border rounded"
+                />
+                <input
+                  placeholder="Country"
+                  value={address.country || ''}
+                  onChange={(e) => updateAddress(index, 'country', e.target.value)}
                   disabled={disabled}
                   className="w-full px-2 py-1 text-sm border border-border rounded"
                 />
               </div>
-              <input
-                placeholder="City"
-                value={address.city || ''}
-                onChange={(e) => updateAddress(index, 'city', e.target.value)}
-                disabled={disabled}
-                className="w-full px-2 py-1 text-sm border border-border rounded"
-              />
-              <input
-                placeholder="State/Province"
-                value={address.state || ''}
-                onChange={(e) => updateAddress(index, 'state', e.target.value)}
-                disabled={disabled}
-                className="w-full px-2 py-1 text-sm border border-border rounded"
-              />
-              <input
-                placeholder="Postal Code"
-                value={address.postal_code || ''}
-                onChange={(e) => updateAddress(index, 'postal_code', e.target.value)}
-                disabled={disabled}
-                className="w-full px-2 py-1 text-sm border border-border rounded"
-              />
-              <input
-                placeholder="Country"
-                value={address.country || ''}
-                onChange={(e) => updateAddress(index, 'country', e.target.value)}
-                disabled={disabled}
-                className="w-full px-2 py-1 text-sm border border-border rounded"
-              />
+              
+              {!disabled && (
+                <button
+                  onClick={() => removeAddress(index)}
+                  className="mt-2 px-2 py-1 text-xs bg-error text-white rounded"
+                >
+                  Remove
+                </button>
+              )}
             </div>
-            
-            {!disabled && (
-              <button
-                onClick={() => removeAddress(index)}
-                className="mt-2 px-2 py-1 text-xs bg-error text-white rounded"
-              >
-                Remove
-              </button>
-            )}
-          </div>
-        ))}
+          ))}
+        </div>
+        
+        {!disabled && (
+          <button
+            onClick={addAddress}
+            className="w-full px-2 py-1 text-sm bg-background-alt text-text-muted rounded hover:bg-background-alt/80 border border-border"
+          >
+            + Add Address
+          </button>
+        )}
       </div>
-      
-      {!disabled && (
-        <button
-          onClick={addAddress}
-          className="w-full px-2 py-1 text-sm bg-background-alt text-text-muted rounded hover:bg-background-alt/80 border border-border"
-        >
-          + Add Address
-        </button>
-      )}
-    </div>
-  );
-};
+    );
+  };
 
 // A reusable group of fields that can be used in both views
 export const VersionFields = ({ data, onChange, disabled, fieldFilter }) => {

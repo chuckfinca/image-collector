@@ -4,6 +4,7 @@ import VersionSelector from '../version/VersionSelector';
 import { VersionFields } from '../fields/SimpleFields';
 import ImageViewModal from '../image/ImageViewModal';
 import VersionPivotTable from '../version/VersionPivotTable';
+import { sanitizeContactData } from '../../utils/data-sanitization';
 
 function DatabaseViewer() {
   const { 
@@ -71,14 +72,16 @@ function DatabaseViewer() {
 
   // Handle saving changes
   const handleSaveChanges = async () => {
-    // Track successes and failures
     let successCount = 0;
     let failCount = 0;
     
-    // Save each version's changes
     for (const [versionId, data] of Object.entries(editData)) {
       try {
-        await updateVersion(parseInt(versionId), data);
+        // Use the simplified sanitization function
+        const sanitizedData = sanitizeContactData(data);
+        
+        // Send sanitized data to the server
+        await updateVersion(parseInt(versionId), sanitizedData);
         successCount++;
       } catch (error) {
         console.error(`Failed to update version ${versionId}:`, error);
@@ -86,12 +89,10 @@ function DatabaseViewer() {
       }
     }
     
-    // Show result feedback
     alert(`Updates: ${successCount} succeeded, ${failCount} failed`);
-    
-    // Exit edit mode
     setEditMode(false);
   };
+  
 
   // Handle image deletion
   const handleDelete = async (imageId) => {
