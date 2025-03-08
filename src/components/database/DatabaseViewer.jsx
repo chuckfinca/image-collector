@@ -1,68 +1,126 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDb } from '../../context/DatabaseContext';
-import { useImageEditor } from '../../hooks/useImageEditor';
+import VersionSelector from '../version/VersionSelector';
+import { VersionFields } from '../fields/SimpleFields';
 import ImageViewModal from '../image/ImageViewModal';
-import ImageThumbnail from '../image/ImageThumbnail';
-import PostalAddressSection from '../address/PostalAddressSection';
+import VersionPivotTable from '../version/VersionPivotTable';
 
 function DatabaseViewer() {
   const { 
     images,
-    updateImage,
-    totalImages,
     versions,
     activeVersions,
-    updateVersionData
+    getVersionData,
+    fetchVersions,
+    updateVersion,
+    deleteImage,
+    extractContactInfo,
+    operationStatus
   } = useDb();
 
-  const [selectedImageUrl, setSelectedImageUrl] = React.useState(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editData, setEditData] = useState({});
+  const [selectedImageUrl, setSelectedImageUrl] = useState(null);
+  const [showPivotTable, setShowPivotTable] = useState(false);
+  const [selectedImageForPivot, setSelectedImageForPivot] = useState(null);
 
-  // Create display images BEFORE using them in the hook
-  const displayImages = images.map(image => {
-    // Check if there's an active version for this image
-    const activeVersionId = activeVersions[image.id];
-    
-    // If no active version, just return the original image
-    if (!activeVersionId) return image;
-    
-    // Find the version data
-    const imageVersions = versions[image.id] || [];
-    const activeVersion = imageVersions.find(v => v.id === activeVersionId);
-    
-    if (!activeVersion) return image;
-    
-    // Create a new object with image data as base, overlaid with version data
-    return {
-      ...image,
-      // Apply each field from the version if it exists
-      name_prefix: activeVersion.name_prefix !== undefined ? activeVersion.name_prefix : image.name_prefix,
-      given_name: activeVersion.given_name !== undefined ? activeVersion.given_name : image.given_name,
-      middle_name: activeVersion.middle_name !== undefined ? activeVersion.middle_name : image.middle_name,
-      family_name: activeVersion.family_name !== undefined ? activeVersion.family_name : image.family_name,
-      name_suffix: activeVersion.name_suffix !== undefined ? activeVersion.name_suffix : image.name_suffix,
-      job_title: activeVersion.job_title !== undefined ? activeVersion.job_title : image.job_title,
-      department: activeVersion.department !== undefined ? activeVersion.department : image.department,
-      organization_name: activeVersion.organization_name !== undefined ? activeVersion.organization_name : image.organization_name,
-      phone_numbers: activeVersion.phone_numbers || image.phone_numbers || [],
-      email_addresses: activeVersion.email_addresses || image.email_addresses || [],
-      url_addresses: activeVersion.url_addresses || image.url_addresses || [],
-      postal_addresses: activeVersion.postal_addresses || image.postal_addresses || [],
-      // Add indicator that this is a version overlay
-      _displayedVersionId: activeVersionId,
-      _versionTag: activeVersion.tag
+  // Initialize edit data when entering edit mode
+  useEffect(() => {
+    if (editMode) {
+      const initialData = {};
+      images.forEach(image => {
+        const versionData = getVersionData(image.id);
+        if (versionData) {
+          initialData[versionData.id] = { ...versionData };
+        }
+      });
+      setEditData(initialData);
+    }
+  }, [editMode, images, versions, activeVersions, getVersionData]);
+
+  // Ensure we have versions for all images
+  useEffect(() => {
+    const loadAllVersions = async () => {
+      for (const image of images) {
+        console.log(`Fetching versions for image ${image.id}`);
+        if (!versions[image.id]) {
+          await fetchVersions(image.id);
+        }
+      }
+      
+      // After fetching, log versions state
+      console.log("Versions state:", versions);
+      console.log("Active versions state:", activeVersions);
     };
-  });
+    
+    if (images.length > 0) {
+      loadAllVersions();
+    }
+  }, [images, versions, fetchVersions]);
 
-  // AFTER creating displayImages, now we can use the hook
-  const {
-    editMode,
-    editableImages,
-    validationState,
-    handleEditToggle,
-    handleInputChange,
-    handleArrayInputChange
-  } = useImageEditor(displayImages, updateImage, updateVersionData, activeVersions);
+  // Handle field changes in edit mode
+  const handleFieldChange = (versionId, updatedData) => {
+    setEditData(prev => ({
+      ...prev,
+      [versionId]: {
+        ...prev[versionId],
+        ...updatedData
+      }
+    }));
+  };
 
+  // Handle saving changes
+  const handleSaveChanges = async () => {
+    // Track successes and failures
+    let successCount = 0;
+    let failCount = 0;
+    
+    // Save each version's changes
+    for (const [versionId, data] of Object.entries(editData)) {
+      try {
+        await updateVersion(parseInt(versionId), data);
+        successCount++;
+      } catch (error) {
+        console.error(`Failed to update version ${versionId}:`, error);
+        failCount++;
+      }
+    }
+    
+    // Show result feedback
+    alert(`Updates: ${successCount} succeeded, ${failCount} failed`);
+    
+    // Exit edit mode
+    setEditMode(false);
+  };
+
+  // Handle image deletion
+  const handleDelete = async (imageId) => {
+    if (!window.confirm('Are you sure you want to delete this entry? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      await deleteImage(imageId);
+    } catch (error) {
+      console.error('Delete failed:', error);
+    }
+  };
+
+  // Handle extraction
+  const handleExtract = async (imageId) => {
+    try {
+      await extractContactInfo(imageId);
+    } catch (error) {
+      console.error('Extraction failed:', error);
+    }
+  };
+
+  // Show image preview
+  const handleImageClick = (thumbnail) => {
+    setSelectedImageUrl(thumbnail);
+  };
+
+  // Show loading if no images
   if (!images?.length) {
     return (
       <div className="text-text-muted text-center py-8">
@@ -70,54 +128,6 @@ function DatabaseViewer() {
       </div>
     );
   }
-
-  const getFieldClassName = (imageId, field) => {
-    const baseClasses = "w-full px-2 py-1 bg-background-alt border rounded text-sm disabled:opacity-75 disabled:cursor-not-allowed";
-    
-    // Add special styling for version fields
-    const hasActiveVersion = !!activeVersions[imageId];
-    const versionStyled = hasActiveVersion ? 'border-secondary' : 'border-border';
-    
-    if (!editMode) return `${baseClasses} ${versionStyled}`;
-    
-    const isInvalid = validationState[imageId]?.[field] === false;
-    return `${baseClasses} ${
-      isInvalid 
-        ? 'border-error focus:border-error focus:ring-error' 
-        : hasActiveVersion
-          ? 'border-secondary focus:border-secondary focus:ring-secondary' 
-          : 'border-border focus:border-primary focus:ring-primary'
-    }`;
-  };
-
-  const renderTextField = (image, field, label = '') => (
-    <div className="space-y-1">
-      <label className="block text-xs text-text-muted">{label}</label>
-      <input
-        type="text"
-        value={editMode ? editableImages.find(img => img.id === image.id)?.[field] || '' : image[field] || ''}
-        onChange={(e) => handleInputChange(image.id, field, e.target.value)}
-        disabled={!editMode}
-        className={getFieldClassName(image.id, field)}
-      />
-    </div>
-  );
-
-  const renderArrayField = (image, field, label = '') => (
-    <div className="space-y-1">
-      <label className="block text-xs text-text-muted">{label}</label>
-      <textarea
-        value={editMode 
-          ? editableImages.find(img => img.id === image.id)?.[field]?.join('\n') || ''
-          : (image[field] || []).join('\n')
-        }
-        onChange={(e) => handleArrayInputChange(image.id, field, e.target.value, field.replace('_addresses', ''))}
-        disabled={!editMode}
-        rows={2}
-        className={getFieldClassName(image.id, field)}
-      />
-    </div>
-  );
 
   return (
     <div className="space-y-4">
@@ -127,92 +137,123 @@ function DatabaseViewer() {
       />
       
       <div className="flex justify-between items-center">
-        <div className="flex items-baseline gap-2">
-          <h2 className="text-xl font-bold text-text">Database Contents</h2>
-          <span className="text-sm text-text-muted">({totalImages} images)</span>
-        </div>
+        <h2 className="text-xl font-bold text-text">Database Contents</h2>
         
         <button
-          onClick={handleEditToggle}
+          onClick={editMode ? handleSaveChanges : () => setEditMode(true)}
           className={`px-4 py-2 rounded transition-colors shadow-sm font-medium ${
             editMode 
-              ? 'bg-success hover:bg-success/90 text-text-on-primary border border-success' 
-              : 'bg-primary hover:bg-primary/90 text-text-on-primary border border-primary'
+              ? 'bg-success hover:bg-success/90 text-text-on-primary' 
+              : 'bg-primary hover:bg-primary/90 text-text-on-primary'
           }`}
         >    
           {editMode ? 'Save Changes' : 'Edit All'}
         </button>
       </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {images.map(image => {
+          // Get the active version for this image
+          const versionId = activeVersions[image.id];
+          const versionData = editMode 
+            ? (versionId ? editData[versionId] : null)
+            : getVersionData(image.id);
 
-      <div className="overflow-x-auto border border-border rounded-lg shadow-sm bg-background-subtle">
-        <table className="w-full border-collapse">
-          <thead className="bg-background-alt">
-            <tr>
-              <th className="p-3 text-left text-text align-top font-medium text-sm border-b border-border-subtle">Image</th>
-              <th className="p-3 text-left text-text align-top font-medium text-sm border-b border-border-subtle">Name Info</th>
-              <th className="p-3 text-left text-text align-top font-medium text-sm border-b border-border-subtle">Work Info</th>
-              <th className="p-3 text-left text-text align-top font-medium text-sm border-b border-border-subtle">Contact Info</th>
-              <th className="p-3 text-left text-text align-top font-medium text-sm border-b border-border-subtle">Online Presence</th>
-              <th className="p-3 text-left text-text align-top font-medium text-sm border-b border-border-subtle">Addresses</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border-subtle">
-            {(editMode ? editableImages : displayImages).map((image) => (
-              <tr key={image.id} className={`hover:bg-background-alt/50 ${image._displayedVersionId ? 'bg-secondary/5' : ''}`}>
-                <td className="p-3 align-top">
-                  <ImageThumbnail
-                    image={image}
-                    onSetSelectedImageUrl={setSelectedImageUrl}
-                    editMode={editMode}
-                  />
-                  
-                  {/* Version indicator */}
-                  {image._displayedVersionId && !editMode && (
-                    <div className="mt-2 text-xs py-1 px-2 bg-secondary/20 text-secondary rounded">
-                      Showing version: {image._versionTag}
+          // Log to see what's happening
+          console.log(`Image ${image.id}:`, {
+            versionId,
+            versionData,
+            editMode,
+            editDataExists: versionId ? !!editData[versionId] : false
+          });
+
+          if (!versionData) {
+            console.log(`No version data for image ${image.id}`);
+            return null;
+          }
+          
+          return (
+            <div key={image.id} className="border border-border rounded-lg shadow-sm bg-background p-4 space-y-4">
+              {/* Image and controls section */}
+              <div className="flex">
+                {/* Image thumbnail */}
+                <div 
+                  className="w-32 h-32 bg-background-alt rounded flex items-center justify-center cursor-pointer"
+                  onClick={() => handleImageClick(image.thumbnail)}
+                >
+                  {image.thumbnail ? (
+                    <img
+                      src={image.thumbnail}
+                      alt="Contact info card"
+                      className="object-contain w-full h-full rounded"
+                    />
+                  ) : (
+                    <div className="text-text-muted flex flex-col items-center justify-center w-full h-full">
+                      <span className="text-xs">No thumbnail</span>
                     </div>
                   )}
-                </td>
-                <td className="p-3 align-top">
-                  <div className="space-y-2">
-                    {renderTextField(image, 'name_prefix', 'Prefix')}
-                    {renderTextField(image, 'given_name', 'Given Name')}
-                    {renderTextField(image, 'middle_name', 'Middle Name')}
-                    {renderTextField(image, 'family_name', 'Family Name')}
-                    {renderTextField(image, 'name_suffix', 'Suffix')}
-                  </div>
-                </td>
-                <td className="p-3 align-top">
-                  <div className="space-y-2">
-                    {renderTextField(image, 'job_title', 'Job Title')}
-                    {renderTextField(image, 'department', 'Department')}
-                    {renderTextField(image, 'organization_name', 'Organization')}
-                  </div>
-                </td>
-                <td className="p-3 align-top">
-                  <div className="space-y-2">
-                    {renderArrayField(image, 'phone_numbers', 'Phone Numbers (one per line)')}
-                    {renderArrayField(image, 'email_addresses', 'Email Addresses (one per line)')}
-                  </div>
-                </td>
-                <td className="p-3 align-top">
-                  <div className="space-y-2">
-                    {renderArrayField(image, 'url_addresses', 'URLs (one per line)')}
-                  </div>
-                </td>
-                <td className="p-3 align-top">
-                  <PostalAddressSection 
-                    image={image}
-                    editMode={editMode}
-                    editableImages={editableImages}
-                    handleInputChange={handleInputChange}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+                
+                {/* Version selector and actions */}
+                <div className="flex-1 ml-4 flex flex-col space-y-2">
+                  <VersionSelector imageId={image.id} />
+                  
+                  <div className="flex-1"></div>
+                  
+                  {/* Action buttons */}
+                  <button
+                    onClick={() => handleExtract(image.id)}
+                    disabled={operationStatus[`extract-${image.id}`]?.loading || editMode}
+                    className="w-full px-2 py-1 text-sm bg-secondary hover:bg-secondary/90 text-white rounded disabled:opacity-50"
+                  >
+                    {operationStatus[`extract-${image.id}`]?.loading ? 'Extracting...' : 'Extract Info'}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSelectedImageForPivot(image.id);
+                      setShowPivotTable(true);
+                    }}
+                    disabled={editMode}
+                    className="w-full px-2 py-1 text-sm bg-primary hover:bg-primary/90 text-white rounded disabled:opacity-50"
+                  >
+                    Compare Versions
+                  </button>
+                  
+                  <button
+                    onClick={() => handleDelete(image.id)}
+                    disabled={operationStatus[`delete-${image.id}`]?.loading || editMode}
+                    className="w-full px-2 py-1 text-sm bg-error hover:bg-error/90 text-white rounded disabled:opacity-50"
+                  >
+                    Delete Entry
+                  </button>
+                </div>
+              </div>
+              
+              {/* Version data section */}
+              <div className="border-t border-border pt-4">
+                <VersionFields
+                  data={versionData}
+                  onChange={editMode ? (updatedData) => handleFieldChange(versionId, updatedData) : null}
+                  disabled={!editMode}
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
+      
+      {/* Modal for version comparison */}
+      {showPivotTable && selectedImageForPivot && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex justify-center items-center z-50 p-4">
+          <div className="bg-background border border-border rounded-lg shadow-lg w-full max-w-6xl max-h-[90vh] overflow-auto">
+            <VersionPivotTable 
+              imageId={selectedImageForPivot} 
+              onClose={() => setShowPivotTable(false)} 
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

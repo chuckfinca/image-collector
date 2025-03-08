@@ -258,6 +258,13 @@ class ImageDatabase:
                             image_id, profile.get('service'),
                             profile.get('url'), profile.get('username')
                         ))
+                        
+                    await self.create_version(
+                        image_id=image_id,
+                        tag="original",
+                        notes="Initial version",
+                        create_blank=False
+                    )
                     
                     return True
                     
