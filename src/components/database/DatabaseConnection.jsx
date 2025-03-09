@@ -11,6 +11,12 @@ function DatabaseConnection({ onStatusChange = () => {} }) {
     loading
   } = useDb();
   
+  // Function to clean up path by removing escape characters
+  const cleanPath = (path) => {
+    // Remove backslash escapes before spaces
+    return path.replace(/\\(\s)/g, '$1');
+  };
+  
   const handleConnect = async (e) => {
     e.preventDefault();
     if (!dbPath.trim()) {
@@ -38,9 +44,17 @@ function DatabaseConnection({ onStatusChange = () => {} }) {
   useEffect(() => {
     const savedPath = localStorage.getItem('imageDatabasePath');
     if (savedPath) {
-      setDbPath(savedPath);
+      // Clean the saved path too
+      setDbPath(cleanPath(savedPath));
     }
   }, [setDbPath]);
+
+  // Function to handle path input change
+  const handlePathChange = (e) => {
+    const inputPath = e.target.value;
+    // Clean the path as it's being typed
+    setDbPath(cleanPath(inputPath));
+  };
 
   return (
     <div className="flex items-center">
@@ -60,7 +74,7 @@ function DatabaseConnection({ onStatusChange = () => {} }) {
           <input
             type="text"
             value={dbPath}
-            onChange={(e) => setDbPath(e.target.value)}
+            onChange={handlePathChange}
             placeholder="Database path..."
             className="w-48 px-3 py-1.5 bg-background-alt border border-border rounded-l text-sm focus:outline-none focus:ring-1 focus:ring-primary"
             disabled={loading}

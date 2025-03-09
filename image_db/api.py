@@ -5,7 +5,7 @@ import sqlite3
 import aiohttp
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 import logging
-from .models import DbPath, ImageUpdate
+from .models import DbPath, ImageUpdate, VersionCreate
 from .database import ImageDatabase
 from .utils import get_db_connection, create_thumbnail
 from io import BytesIO
@@ -220,16 +220,19 @@ async def extract_contact(image_id: int):
                 logger.warning(f"Image ID {image_id} not found")
                 raise HTTPException(status_code=404, detail="Image not found")
         
-        contact_info = await image_db.extract_contact_info(image_id)
+        result = await image_db.extract_contact_info(image_id)
+        if not result["success"]:
+            raise HTTPException(status_code=500, detail=result["error"])
+            
         logger.info(f"Successfully extracted contact info for image ID: {image_id}")
-        return {"success": True, "data": contact_info}
+        return {"success": True, "data": result["data"]}
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
         logger.error(f"Error extracting contact info: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Extraction error: {str(e)}")
-    
+
 @router.delete("/image/{image_id}")
 async def delete_image(image_id: int):
     if not image_db:
@@ -284,20 +287,42 @@ async def get_full_image(image_id: int):
 @router.post("/upload/file")
 async def upload_image_file(file: UploadFile = File(...)):
     if not image_db:
-        raise HTTPException(status_code=400, detail="Database not initialized")
+        raise HTTPException(status_code=400, detail="Database not initialized - please connect to a database first")
     
-    logger.info(f"Received file upload: {file.filename}")
+    logger.info(f"Received file upload: {file.filename}, content_type: {file.content_type}")
+    
+    # Validate file is an image
+    if not file.content_type.startswith('image/'):
+        logger.warning(f"Non-image file uploaded: {file.filename}, content_type: {file.content_type}")
+        raise HTTPException(status_code=400, detail=f"File must be an image (received {file.content_type})")
     
     try:
         # Read file content
         contents = await file.read()
+        logger.info(f"Read {len(contents)} bytes from file {file.filename}")
+        
+        if not contents or len(contents) == 0:
+            logger.error(f"Empty file content for {file.filename}")
+            raise HTTPException(status_code=400, detail="File content is empty - please select a valid image")
         
         # Get file metadata
         metadata = {
             'filename': file.filename
         }
         
+        # Try to verify it's a valid image
+        try:
+            from PIL import Image
+            from io import BytesIO
+            img = Image.open(BytesIO(contents))
+            img.verify()  # Verify it's a valid image
+            logger.info(f"Image verified: {file.filename}, format: {img.format}, size: {getattr(img, 'size', 'unknown')}")
+        except Exception as img_error:
+            logger.error(f"Invalid image format: {file.filename}, error: {img_error}")
+            raise HTTPException(status_code=400, detail=f"Invalid image format: {str(img_error)}")
+        
         # Save to database
+        logger.info(f"Saving image to database: {file.filename}")
         success = await image_db.save_image(contents, metadata)
         
         if success:
@@ -305,12 +330,15 @@ async def upload_image_file(file: UploadFile = File(...)):
             return {"success": True, "message": "Image uploaded successfully"}
         else:
             logger.warning(f"Failed to save image: {file.filename}")
-            raise HTTPException(status_code=400, detail="Failed to save image (possibly a duplicate)")
+            raise HTTPException(status_code=400, detail="Failed to save image - it may be a duplicate (already exists in database)")
             
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         logger.error(f"Error uploading file: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-    
+        raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
+
 @router.post("/upload/url")
 async def upload_image_url(url: str = Form(...)):
     if not image_db:
@@ -347,3 +375,99 @@ async def upload_image_url(url: str = Form(...)):
     except Exception as e:
         logger.error(f"Error uploading from URL: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.post("/version/{image_id}")
+async def create_image_version(
+    image_id: int, 
+    version_data: VersionCreate,
+    image_db: ImageDatabase = Depends(get_image_db)
+):
+    """Create a new version for an image."""
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    # Log what we're doing
+    logger.info(f"Creating version for image {image_id} with data: {version_data.model_dump()}")
+    
+    # If creating a blank version, ignore source_version_id
+    if version_data.create_blank:
+        logger.info(f"Creating blank version for image {image_id}, ignoring source_version_id")
+        source_version_id = None
+    else:
+        # Validate source_version_id if provided
+        source_version_id = version_data.source_version_id
+        if source_version_id is not None:
+            try:
+                # Verify source version exists
+                with get_db_connection(image_db.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id FROM image_versions WHERE id = ?", (source_version_id,))
+                    if not cursor.fetchone():
+                        logger.warning(f"Source version ID {source_version_id} not found, setting to None")
+                        source_version_id = None
+            except Exception as e:
+                logger.error(f"Error validating source version: {e}")
+                source_version_id = None
+    
+    try:
+        # Create the version
+        version_id = await image_db.create_version(
+            image_id=image_id,
+            tag=version_data.tag,
+            source_version_id=source_version_id,
+            notes=version_data.notes,
+            create_blank=version_data.create_blank  # Pass the create_blank flag
+        )
+        
+        logger.info(f"Successfully created version {version_id} for image {image_id}")
+        return {"success": True, "version_id": version_id}
+    except Exception as e:
+        logger.error(f"Error creating version: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/versions/{image_id}")
+async def get_image_versions(
+    image_id: int,
+    image_db: ImageDatabase = Depends(get_image_db)
+):
+    """Get all versions for an image."""
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    versions = image_db.get_image_versions(image_id)
+    return {"versions": versions}
+
+@router.put("/version/{version_id}")
+async def update_version(
+    version_id: int, 
+    update_data: ImageUpdate,
+    image_db: ImageDatabase = Depends(get_image_db)
+):
+    """Update a specific version."""
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    success = image_db.update_version(version_id, update_data.model_dump(exclude_unset=True))
+    
+    if success:
+        return {"success": True, "message": "Version updated successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to update version")
+    
+@router.delete("/version/{version_id}")
+async def delete_version(
+    version_id: int,
+    image_db: ImageDatabase = Depends(get_image_db)
+):
+    """Delete a specific version."""
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    logger.info(f"Deleting version {version_id}")
+    
+    success = image_db.delete_version(version_id)
+    
+    if success:
+        return {"success": True, "message": "Version deleted successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to delete version")

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useDb } from '../../context/DatabaseContext';
+import VersionSelector from '../version/VersionSelector';
 
 function ImageThumbnail({ 
   image, 
@@ -95,6 +96,7 @@ function ImageThumbnail({
       >
         Delete Entry
       </button>
+      <VersionSelector imageId={image.id} />
     </div>
   );
 }
