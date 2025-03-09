@@ -93,7 +93,6 @@ function DatabaseViewer() {
     setEditMode(false);
   };
   
-
   // Handle image deletion
   const handleDelete = async (imageId) => {
     if (!window.confirm('Are you sure you want to delete this entry? This action cannot be undone.')) {
@@ -160,28 +159,49 @@ function DatabaseViewer() {
             ? (versionId ? editData[versionId] : null)
             : getVersionData(image.id);
 
-          // Log to see what's happening
-          console.log(`Image ${image.id}:`, {
-            versionId,
-            versionData,
-            editMode,
-            editDataExists: versionId ? !!editData[versionId] : false
-          });
-
           if (!versionData) {
             console.log(`No version data for image ${image.id}`);
             return null;
           }
           
           return (
-            <div key={image.id} className="border border-border rounded-lg shadow-sm bg-background p-4 space-y-4">
-              {/* Image and controls section */}
+            <div key={image.id} className="border border-border rounded-lg shadow-sm bg-background p-4 space-y-4 relative">
+              {/* Image and actions section - flipped layout (image left, buttons right) */}
               <div className="flex">
-                {/* Image thumbnail */}
+                {/* Left side - Image thumbnail with delete button positioned over it */}
                 <div 
-                  className="w-32 h-32 bg-background-alt rounded flex items-center justify-center cursor-pointer"
+                  className="w-40 h-32 bg-background-alt rounded flex items-center justify-center cursor-pointer mr-4 relative"
                   onClick={() => handleImageClick(image.thumbnail)}
                 >
+                  {/* Super simple text-based delete button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent image click
+                      handleDelete(image.id);
+                    }}
+                    disabled={operationStatus[`delete-${image.id}`]?.loading || editMode}
+                    className="absolute -top-1.5 -right-1.5 z-10"
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'rgba(139, 92, 246, 0.5)',  // Transparent Purple background
+                      border: 'none',
+                      borderRadius: '4px',  // Slightly rounded rectangle
+                      cursor: 'pointer',
+                      fontSize: '16px',
+                      fontWeight: 'bold',
+                      color: 'rgba(255, 255, 255, 0.6)',
+                      lineHeight: '1',
+                      padding: '0'
+                    }}
+                    title="Delete Entry"
+                  >
+                    ×
+                  </button>
+                  
                   {image.thumbnail ? (
                     <img
                       src={image.thumbnail}
@@ -195,17 +215,12 @@ function DatabaseViewer() {
                   )}
                 </div>
                 
-                {/* Version selector and actions */}
-                <div className="flex-1 ml-4 flex flex-col space-y-2">
-                  <VersionSelector imageId={image.id} />
-                  
-                  <div className="flex-1"></div>
-                  
-                  {/* Action buttons */}
+                {/* Right side - action buttons */}
+                <div className="flex-grow flex flex-col space-y-2 justify-center">
                   <button
                     onClick={() => handleExtract(image.id)}
                     disabled={operationStatus[`extract-${image.id}`]?.loading || editMode}
-                    className="w-full px-2 py-1 text-sm bg-secondary hover:bg-secondary/90 text-white rounded disabled:opacity-50"
+                    className="w-full px-2 py-1.5 text-sm bg-secondary hover:bg-secondary/90 text-white rounded disabled:opacity-50"
                   >
                     {operationStatus[`extract-${image.id}`]?.loading ? 'Extracting...' : 'Extract Info'}
                   </button>
@@ -216,20 +231,15 @@ function DatabaseViewer() {
                       setShowPivotTable(true);
                     }}
                     disabled={editMode}
-                    className="w-full px-2 py-1 text-sm bg-primary hover:bg-primary/90 text-white rounded disabled:opacity-50"
+                    className="w-full px-2 py-1.5 text-sm bg-primary hover:bg-primary/90 text-white rounded disabled:opacity-50"
                   >
                     Compare Versions
                   </button>
-                  
-                  <button
-                    onClick={() => handleDelete(image.id)}
-                    disabled={operationStatus[`delete-${image.id}`]?.loading || editMode}
-                    className="w-full px-2 py-1 text-sm bg-error hover:bg-error/90 text-white rounded disabled:opacity-50"
-                  >
-                    Delete Entry
-                  </button>
                 </div>
               </div>
+              
+              {/* Version selector below image */}
+              <VersionSelector imageId={image.id} />
               
               {/* Version data section */}
               <div className="border-t border-border pt-4">
