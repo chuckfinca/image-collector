@@ -186,17 +186,29 @@ class ImageDatabase:
             """)
         
     async def save_image(self, image_data: bytes, metadata: dict = None) -> bool:
+        """
+        Save an image and its metadata to the database.
+        Always creates an original version after saving.
+        """
         if metadata is None:
             metadata = {}
         
         image_hash = hashlib.sha256(image_data).hexdigest()
         
         try:
+            # Validate image data
             img = Image.open(BytesIO(image_data))
             img.verify()
             
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                
+                # Check if image already exists
+                cursor.execute("SELECT id FROM images WHERE hash = ?", (image_hash,))
+                existing = cursor.fetchone()
+                if existing:
+                    logger.info(f"Duplicate image detected with hash: {image_hash}")
+                    return False
                 
                 try:
                     # Insert main image record
@@ -207,7 +219,7 @@ class ImageDatabase:
                             job_title, department, organization_name
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        metadata.get('filename', 'unknown.jpg'),  # Add default filename
+                        metadata.get('filename', 'unknown.jpg'),
                         image_data, image_hash, datetime.now(),
                         metadata.get('name_prefix'), metadata.get('given_name'),
                         metadata.get('middle_name'), metadata.get('family_name'),
@@ -216,6 +228,7 @@ class ImageDatabase:
                     ))
                     
                     image_id = cursor.lastrowid
+                    logger.info(f"Image inserted with ID: {image_id}")
                     
                     # Insert related records
                     for phone in metadata.get('phone_numbers', []):
@@ -258,27 +271,32 @@ class ImageDatabase:
                             image_id, profile.get('service'),
                             profile.get('url'), profile.get('username')
                         ))
-                        
-                    await self.create_version(
+                    
+                    # IMPORTANT: Always create the initial version
+                    conn.commit()  # Commit the transaction before creating version
+                    
+                    # Create initial version - this should be part of the standard process
+                    logger.info(f"Creating original version for image ID: {image_id}")
+                    version_id = await self.create_version(
                         image_id=image_id,
                         tag="original",
                         notes="Initial version",
                         create_blank=False
                     )
                     
+                    logger.info(f"Created version {version_id} for image {image_id}")
                     return True
                     
                 except sqlite3.IntegrityError as e:
-                    logger.info(f"Database integrity error: {e}")
+                    logger.error(f"Database integrity error: {e}")
                     return False
                 except Exception as e:
-                    logger.info(f"Database insertion error: {e}")
+                    logger.error(f"Database insertion error: {e}", exc_info=True)
                     return False
                     
         except Exception as e:
-            logger.info(f"Error in save_image: {e}")
+            logger.error(f"Error in save_image: {e}", exc_info=True)
             return False
-
         
     def update_image(self, image_id: int, update_data: Dict[str, Any]) -> bool:
         try:

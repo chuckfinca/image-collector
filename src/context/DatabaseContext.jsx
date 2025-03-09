@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { api } from '../services/api';
 
 const DatabaseContext = createContext(null);
@@ -42,12 +42,29 @@ export const DatabaseProvider = ({ children }) => {
     if (!isConnected) return;
     
     try {
+      console.log("Attempting to fetch images from database...");
       const response = await api.fetchImages();
-      setImages(response?.images || []);
+      console.log("Fetch images response:", response);
+      
+      if (response?.images) {
+        console.log(`Received ${response.images.length} images from database`);
+        setImages(response.images);
+      } else {
+        console.warn("No images returned from database or invalid response format");
+        setImages([]);
+      }
     } catch (error) {
+      console.error("Error fetching images:", error);
       handleError(error, 'refresh');
     }
   }, [isConnected, handleError]);
+  
+  // Also check your DatabaseViewer.jsx and add this logging
+  useEffect(() => {
+    console.log("DatabaseViewer - Current images state:", images);
+    console.log("DatabaseViewer - Current versions state:", versions);
+  }, [images, versions]);
+  
 
   // Database connection
   const connect = useCallback(async () => {
