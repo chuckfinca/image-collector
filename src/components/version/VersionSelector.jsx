@@ -1,24 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useDb } from '../../context/DatabaseContext';
+import useVersionManagement from '../../hooks/useVersionManagement';
 
 const VersionSelector = ({ imageId, onVersionChange }) => {
-  const { 
-    versions, 
-    activeVersions, 
-    setActiveVersions, 
-    fetchVersions, 
-    createVersion,
-    deleteVersion,
-    operationStatus
-  } = useDb();
+  const { fetchVersions, versions } = useDb();
   
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newVersionTag, setNewVersionTag] = useState('');
-  const [notes, setNotes] = useState('');
-  
-  // Get versions for this image
-  const imageVersions = versions[imageId] || [];
-  const activeVersionId = activeVersions[imageId];
+  const {
+    showCreateForm,
+    setShowCreateForm,
+    newVersionTag,
+    setNewVersionTag,
+    notes,
+    setNotes,
+    createBlank,
+    setCreateBlank,
+    imageVersions,
+    activeVersionId,
+    handleVersionChange,
+    handleCreateVersion,
+    handleDeleteVersion
+  } = useVersionManagement(imageId);
   
   // Fetch versions if needed
   useEffect(() => {
@@ -27,15 +28,10 @@ const VersionSelector = ({ imageId, onVersionChange }) => {
     }
   }, [imageId, versions, fetchVersions]);
   
-  // Handle version selection
-  const handleVersionChange = (e) => {
+  // Handle version change with callback to parent
+  const onSelectVersion = (e) => {
     const versionId = parseInt(e.target.value, 10);
-    
-    // Update active version in context
-    setActiveVersions(prev => ({
-      ...prev,
-      [imageId]: versionId
-    }));
+    handleVersionChange(versionId);
     
     // Notify parent component if needed
     if (onVersionChange) {
@@ -43,62 +39,26 @@ const VersionSelector = ({ imageId, onVersionChange }) => {
     }
   };
   
-  // Create a new version
-  const handleCreateVersion = async (e) => {
+  // Handle the form submission
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
     try {
-      // Use active version as source if one exists
-      const sourceVersionId = activeVersionId || null;
-      
-      const result = await createVersion(
-        imageId, 
-        newVersionTag, 
-        sourceVersionId, 
-        notes,
-        false  // Not creating blank
-      );
-      
-      // Reset form
-      setNewVersionTag('');
-      setNotes('');
-      setShowCreateForm(false);
-      
-      // Auto-select the newly created version
-      if (result && result.version_id) {
-        setActiveVersions(prev => ({
-          ...prev,
-          [imageId]: result.version_id
-        }));
-        
-        if (onVersionChange) {
-          onVersionChange(result.version_id);
-        }
-      }
+      await handleCreateVersion();
     } catch (error) {
-      console.error('Failed to create version:', error);
+      alert(error.message);
     }
   };
   
-  // Delete the active version
-  const handleDeleteVersion = async () => {
-    if (!activeVersionId) return;
-    
-    // Prevent deleting the only version
-    if (imageVersions.length <= 1) {
-      alert("Cannot delete the only version");
-      return;
-    }
-    
-    // Confirm deletion
+  // Handle delete with confirmation
+  const onDeleteClick = async () => {
     if (!window.confirm("Are you sure you want to delete this version?")) {
       return;
     }
     
     try {
-      await deleteVersion(activeVersionId);
+      await handleDeleteVersion();
     } catch (error) {
-      console.error("Failed to delete version:", error);
+      alert(error.message);
     }
   };
   
@@ -114,7 +74,7 @@ const VersionSelector = ({ imageId, onVersionChange }) => {
       {/* Version selector */}
       <select
         value={activeVersionId || ''}
-        onChange={handleVersionChange}
+        onChange={onSelectVersion}
         className="w-full px-2 py-1 bg-background-alt border border-border rounded text-sm"
       >
         {imageVersions.map(version => (
@@ -135,7 +95,7 @@ const VersionSelector = ({ imageId, onVersionChange }) => {
         
         {imageVersions.length > 1 && (
           <button 
-            onClick={handleDeleteVersion}
+            onClick={onDeleteClick}
             className="px-2 py-1 bg-error hover:bg-error/90 text-white rounded text-sm"
           >
             Delete
@@ -145,7 +105,7 @@ const VersionSelector = ({ imageId, onVersionChange }) => {
       
       {/* Create version form */}
       {showCreateForm && (
-        <form onSubmit={handleCreateVersion} className="space-y-2 mt-2 border-t border-border pt-2">
+        <form onSubmit={handleSubmit} className="space-y-2 mt-2 border-t border-border pt-2">
           <div>
             <label className="block text-xs text-text-muted">Version Name</label>
             <input
@@ -166,6 +126,19 @@ const VersionSelector = ({ imageId, onVersionChange }) => {
               className="w-full px-2 py-1 bg-background-alt border border-border rounded text-sm"
               rows={2}
             />
+          </div>
+          
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id={`create-blank-${imageId}`}
+              checked={createBlank}
+              onChange={() => setCreateBlank(!createBlank)}
+              className="mr-2"
+            />
+            <label htmlFor={`create-blank-${imageId}`} className="text-xs">
+              Start with empty version (don't copy current data)
+            </label>
           </div>
           
           <button 

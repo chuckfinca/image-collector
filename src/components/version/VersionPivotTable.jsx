@@ -1,16 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { useDb } from '../../context/DatabaseContext';
 import { TextField, ArrayField, AddressField } from '../fields/SimpleFields';
+import useVersionManagement from '../../hooks/useVersionManagement';
 
 function VersionPivotTable({ imageId, onClose }) {
-  const { versions, fetchVersions, updateVersion, deleteVersion, createVersion } = useDb();
+  const { fetchVersions, updateVersion } = useDb();
+  
+  // State for table editing functionality
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState({});
   const [selectedFields, setSelectedFields] = useState([
     'given_name', 'family_name', 'organization_name', 
     'phone_numbers', 'email_addresses', 'postal_addresses'
   ]);
-  const [newVersionName, setNewVersionName] = useState('');
+  
+  // Use the shared version management hook
+  const {
+    newVersionTag,
+    setNewVersionTag,
+    notes,
+    setNotes,
+    createBlank, 
+    setCreateBlank,
+    imageVersions,
+    handleCreateVersion,
+    handleDeleteVersion
+  } = useVersionManagement(imageId);
   
   // Define all field groups
   const fieldGroups = {
@@ -36,30 +51,16 @@ function VersionPivotTable({ imageId, onClose }) {
     ]
   };
   
-  // Fetch versions if needed
-  useEffect(() => {
-    const loadVersions = async () => {
-      if (!versions[imageId]) {
-        await fetchVersions(imageId);
-      }
-    };
-    
-    loadVersions();
-  }, [imageId, versions, fetchVersions]);
-  
   // Initialize edit data when entering edit mode
   useEffect(() => {
-    if (editMode && versions[imageId]) {
+    if (editMode && imageVersions.length > 0) {
       const initialData = {};
-      versions[imageId].forEach(version => {
+      imageVersions.forEach(version => {
         initialData[version.id] = { ...version };
       });
       setEditData(initialData);
     }
-  }, [editMode, versions, imageId]);
-  
-  // Get all versions for this image
-  const imageVersions = versions[imageId] || [];
+  }, [editMode, imageVersions]);
   
   // Toggle a field in the selected fields list
   const toggleField = (fieldId) => {
@@ -92,57 +93,30 @@ function VersionPivotTable({ imageId, onClose }) {
       }
     }
     
-    // Refresh versions
-    await fetchVersions(imageId);
-    
     // Exit edit mode
     setEditMode(false);
   };
   
-  // Handle delete version
-  const handleDeleteVersion = async (versionId) => {
-    // Prevent deleting the only version
-    if (imageVersions.length <= 1) {
-      alert("Cannot delete the only version");
-      return;
-    }
-    
-    // Confirm deletion
-    if (!window.confirm("Are you sure you want to delete this version?")) {
-      return;
-    }
-    
-    try {
-      await deleteVersion(versionId);
-    } catch (error) {
-      console.error("Failed to delete version:", error);
-    }
-  };
-  
-  // Create a new version
-  const handleCreateVersion = async () => {
-    if (!newVersionName.trim()) {
+  // Create a new version with a simple wrapper
+  const createNewVersion = async () => {
+    if (!newVersionTag.trim()) {
       alert("Please enter a name for the new version");
       return;
     }
     
     try {
-      // Use the first version as source
-      const sourceVersionId = imageVersions.length > 0 ? imageVersions[0].id : null;
+      await handleCreateVersion({
+        tag: newVersionTag,
+        notes: notes,
+        createBlank: createBlank,
+        sourceVersionId: !createBlank && imageVersions.length > 0 ? imageVersions[0].id : null
+      });
       
-      await createVersion(
-        imageId,
-        newVersionName,
-        sourceVersionId,
-        "Created from version comparison"
-      );
-      
-      // Reset input and refresh
-      setNewVersionName('');
-      await fetchVersions(imageId);
-      
+      // Reset form fields
+      setNewVersionTag('');
+      setNotes('');
+      setCreateBlank(false);
     } catch (error) {
-      console.error("Failed to create version:", error);
       alert(`Failed to create version: ${error.message}`);
     }
   };
@@ -199,6 +173,7 @@ function VersionPivotTable({ imageId, onClose }) {
 
   return (
     <div className="p-4">
+      {/* Header with action buttons */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-bold">Version Comparison</h2>
         <div className="space-x-2">
@@ -235,21 +210,46 @@ function VersionPivotTable({ imageId, onClose }) {
       </div>
       
       {/* New version creation */}
-      <div className="mb-4 p-3 border border-border rounded bg-background-alt flex">
-        <input
-          type="text"
-          value={newVersionName}
-          onChange={(e) => setNewVersionName(e.target.value)}
-          placeholder="New version name"
-          className="flex-1 px-3 py-2 bg-background border border-border rounded-l"
-        />
-        <button
-          onClick={handleCreateVersion}
-          disabled={!newVersionName.trim()}
-          className="px-4 py-2 bg-secondary text-white rounded-r disabled:opacity-50"
-        >
-          Create Version
-        </button>
+      <div className="mb-4 p-3 border border-border rounded bg-background-alt">
+        <div className="flex flex-col space-y-2">
+          <div className="flex space-x-2">
+            <input
+              type="text"
+              value={newVersionTag}
+              onChange={(e) => setNewVersionTag(e.target.value)}
+              placeholder="New version name"
+              className="flex-1 px-3 py-2 bg-background border border-border rounded"
+            />
+            <button
+              onClick={createNewVersion}
+              disabled={!newVersionTag.trim()}
+              className="px-4 py-2 bg-secondary text-white rounded disabled:opacity-50"
+            >
+              Create Version
+            </button>
+          </div>
+          
+          <input
+            type="text"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Version notes (optional)"
+            className="w-full px-3 py-2 bg-background border border-border rounded"
+          />
+          
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="create-blank-pivot"
+              checked={createBlank}
+              onChange={() => setCreateBlank(!createBlank)}
+              className="mr-2"
+            />
+            <label htmlFor="create-blank-pivot" className="text-sm">
+              Start with empty version (don't copy current data)
+            </label>
+          </div>
+        </div>
       </div>
       
       {/* Field Selector */}
