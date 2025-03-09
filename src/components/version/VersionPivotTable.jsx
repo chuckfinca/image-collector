@@ -1,16 +1,33 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDb } from '../../context/DatabaseContext';
-import { sanitizeContactData, detectChanges } from '../../utils/data-sanitization';
-
+import { TextField, ArrayField, AddressField } from '../fields/SimpleFields';
+import useVersionManagement from '../../hooks/useVersionManagement';
 
 function VersionPivotTable({ imageId, onClose }) {
-  const { versions, fetchVersions, updateVersionData, deleteVersion, operationStatus } = useDb();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [editMode, setEditMode] = useState(false);
-  const [editableData, setEditableData] = useState({});
+  const { fetchVersions, updateVersion } = useDb();
   
-  // Define field groups
+  // State for table editing functionality
+  const [editMode, setEditMode] = useState(false);
+  const [editData, setEditData] = useState({});
+  const [selectedFields, setSelectedFields] = useState([
+    'given_name', 'family_name', 'organization_name', 
+    'phone_numbers', 'email_addresses', 'postal_addresses'
+  ]);
+  
+  // Use the shared version management hook
+  const {
+    newVersionTag,
+    setNewVersionTag,
+    notes,
+    setNotes,
+    createBlank, 
+    setCreateBlank,
+    imageVersions,
+    handleCreateVersion,
+    handleDeleteVersion
+  } = useVersionManagement(imageId);
+  
+  // Define all field groups
   const fieldGroups = {
     'Name Information': [
       { id: 'name_prefix', label: 'Prefix' },
@@ -20,63 +37,31 @@ function VersionPivotTable({ imageId, onClose }) {
       { id: 'name_suffix', label: 'Suffix' }
     ],
     'Work Information': [
-      { id: 'organization_name', label: 'Organization' },
+      { id: 'job_title', label: 'Job Title' },
       { id: 'department', label: 'Department' },
-      { id: 'job_title', label: 'Job Title' }
+      { id: 'organization_name', label: 'Organization' }
     ],
     'Contact Information': [
       { id: 'phone_numbers', label: 'Phone Numbers', isArray: true },
       { id: 'email_addresses', label: 'Email Addresses', isArray: true },
-      { id: 'url_addresses', label: 'URLs', isArray: true },
-      { id: 'postal_addresses', label: 'Postal Addresses', isArray: true, isComplex: true }
+      { id: 'url_addresses', label: 'URLs', isArray: true }
+    ],
+    'Address Information': [
+      { id: 'postal_addresses', label: 'Postal Addresses', isComplex: true }
     ]
   };
-
-  // Create a flat list of all field IDs (after field groups are defined)
-  const allFieldIds = useMemo(() => {
-    return Object.values(fieldGroups).flatMap(group => 
-      group.map(field => field.id)
-    );
-  }, []);  // Empty dependency array means this only runs once
   
-  // Now initialize selectedFields with all fields
-  const [selectedFields, setSelectedFields] = useState(allFieldIds);
-
-  // Fetch versions when component mounts
+  // Initialize edit data when entering edit mode
   useEffect(() => {
-    const loadVersions = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        if (!versions[imageId]) {
-          await fetchVersions(imageId);
-        }
-        setLoading(false);
-      } catch (err) {
-        console.error('Error fetching versions:', err);
-        setError(`Failed to load versions: ${err.message}`);
-        setLoading(false);
-      }
-    };
-    
-    loadVersions();
-  }, [imageId, fetchVersions, versions]);
-
-  // Prepare editable data when entering edit mode
-  useEffect(() => {
-    if (editMode && versions[imageId] && Array.isArray(versions[imageId])) {
+    if (editMode && imageVersions.length > 0) {
       const initialData = {};
-      versions[imageId].forEach(version => {
-        if (version && version.id) {
-          initialData[version.id] = { ...version };
-        }
+      imageVersions.forEach(version => {
+        initialData[version.id] = { ...version };
       });
-      setEditableData(initialData);
+      setEditData(initialData);
     }
-  }, [editMode, versions, imageId]);
-
-  const imageVersions = versions[imageId] || [];
-
+  }, [editMode, imageVersions]);
+  
   // Toggle a field in the selected fields list
   const toggleField = (fieldId) => {
     setSelectedFields(prev => 
@@ -85,394 +70,110 @@ function VersionPivotTable({ imageId, onClose }) {
         : [...prev, fieldId]
     );
   };
-
-  // Handle input changes in edit mode
-  const handleInputChange = (versionId, fieldId, value) => {
-    console.log(`Changing field ${fieldId} for version ${versionId} to:`, value);
-    
-    setEditableData(prev => {
-      // Make sure the previous state exists and has the version
-      const newState = { ...prev };
-      if (!newState[versionId]) {
-        newState[versionId] = {};
+  
+  // Handle field changes in edit mode
+  const handleFieldChange = (versionId, field, value) => {
+    setEditData(prev => ({
+      ...prev,
+      [versionId]: {
+        ...prev[versionId],
+        [field]: value
       }
-      
-      // Update the specific field
-      newState[versionId] = {
-        ...newState[versionId],
-        [fieldId]: value
-      };
-      
-      return newState;
-    });
-  };
-
-  // Handle array input changes (like phone numbers)
-  const handleArrayInputChange = (versionId, fieldId, value) => {
-    console.log(`Changing array field ${fieldId} for version ${versionId} to:`, value);
-    
-    // Convert the text input to an array
-    const arrayValue = value
-      .split('\n')
-      .map(item => item.trim())
-      .filter(Boolean);
-    
-    setEditableData(prev => {
-      // Make sure the previous state exists and has the version
-      const newState = { ...prev };
-      if (!newState[versionId]) {
-        newState[versionId] = {};
-      }
-      
-      // Update the specific field
-      newState[versionId] = {
-        ...newState[versionId],
-        [fieldId]: arrayValue
-      };
-      
-      return newState;
-    });
+    }));
   };
   
-
-  const handleAddressChange = (versionId, addressIndex, field, value) => {
-    setEditableData(prev => {
-      const newData = {...prev};
-      
-      // Make sure the version exists
-      if (!newData[versionId]) {
-        newData[versionId] = {};
+  // Handle saving changes
+  const handleSaveChanges = async () => {
+    // Save each version's changes
+    for (const [versionId, data] of Object.entries(editData)) {
+      try {
+        await updateVersion(parseInt(versionId), data);
+      } catch (error) {
+        console.error(`Failed to update version ${versionId}:`, error);
       }
-      
-      // Make sure the postal_addresses array exists
-      if (!newData[versionId].postal_addresses) {
-        newData[versionId].postal_addresses = [];
-      }
-      
-      // Make sure the specific address object exists
-      if (!newData[versionId].postal_addresses[addressIndex]) {
-        newData[versionId].postal_addresses[addressIndex] = {};
-      }
-      
-      // Update the specific field
-      newData[versionId].postal_addresses[addressIndex][field] = value;
-      
-      return newData;
-    });
-  };
-  
-  const handleAddAddress = (versionId) => {
-    setEditableData(prev => {
-      const newData = {...prev};
-      
-      // Make sure the version exists
-      if (!newData[versionId]) {
-        newData[versionId] = {};
-      }
-      
-      // Make sure the postal_addresses array exists
-      if (!newData[versionId].postal_addresses) {
-        newData[versionId].postal_addresses = [];
-      }
-      
-      // Add a new empty address
-      newData[versionId].postal_addresses.push({
-        street: '',
-        city: '',
-        state: '',
-        postal_code: '',
-        country: ''
-      });
-      
-      return newData;
-    });
-  };
-
-// Handle delete version
-const handleDeleteVersion = async (versionId) => {
-  // Do not allow deleting if there's only one version
-  if (imageVersions.length <= 1) {
-    alert("Cannot delete the only version for this image.");
-    return;
-  }
-
-  // Get the version details for confirmation
-  const version = imageVersions.find(v => v.id === versionId);
-  if (!version) return;
-
-  // Confirm deletion
-  if (!window.confirm(`Are you sure you want to delete version "${version.tag}"? This action cannot be undone.`)) {
-    return;
-  }
-
-  try {
-    // Delete the version
-    await deleteVersion(versionId);
-    
-    // If we're in edit mode and deleting a version that's being edited, exit edit mode
-    if (editMode && editableData[versionId]) {
-      setEditMode(false);
     }
-  } catch (error) {
-    console.error("Failed to delete version:", error);
-    alert(`Failed to delete version: ${error.message}`);
-  }
-};
-  
-// Save all changes
-const handleSaveChanges = async () => {
-  // Track successful and failed updates
-  const results = {
-    success: [],
-    failed: []
-  };
-
-  // Keep track of validation errors
-  const validationErrors = {};
-  
-  console.log("Starting to save changes for versions:", Object.keys(editableData));
-  
-  // Process one version at a time to isolate failures
-  for (const [versionIdStr, data] of Object.entries(editableData)) {
-    try {
-      console.log(`Processing version ${versionIdStr}`);
-      const versionId = parseInt(versionIdStr, 10);
-      
-      // Skip if not a valid number
-      if (isNaN(versionId)) {
-        console.error(`Invalid version ID: ${versionIdStr}`);
-        results.failed.push(`Invalid version ID: ${versionIdStr}`);
-        continue;
-      }
-      
-      const originalVersion = versions[imageId]?.find(v => v.id === versionId);
-      
-      if (!originalVersion) {
-        console.error(`Original version with ID ${versionId} not found`);
-        results.failed.push(`Version ${versionId}: original not found`);
-        continue;
-      }
-      
-      console.log(`Found original version ${versionId}:`, originalVersion);
-      
-      // Make a copy to prevent modifying the original
-      const versionDataCopy = { ...data };
-      
-      // Convert any string arrays that might be stored as newline-separated text
-      ['phone_numbers', 'email_addresses', 'url_addresses'].forEach(field => {
-        if (typeof versionDataCopy[field] === 'string') {
-          versionDataCopy[field] = versionDataCopy[field]
-            .split('\n')
-            .map(item => item.trim())
-            .filter(Boolean);
-        }
-      });
-      
-      console.log(`Prepared version data for ${versionId}:`, versionDataCopy);
-      
-      // Only process fields that are currently selected in the UI
-      console.log(`Selected fields for validation: ${selectedFields.join(', ')}`);
-      
-      // Sanitize the data using the shared utility
-      const { sanitizedData, validationResults, isValid } = sanitizeContactData(versionDataCopy, selectedFields);
-      
-      // Store validation results
-      validationErrors[versionId] = validationResults;
-      
-      // Skip if validation failed
-      if (!isValid) {
-        console.error(`Validation failed for version ${versionId}:`, validationResults);
-        results.failed.push(`Version ${versionId}: validation failed`);
-        continue;
-      }
-      
-      console.log(`Validation passed for version ${versionId}`);
-      
-      // Detect what actually changed
-      const { changes, hasChanges } = detectChanges(originalVersion, sanitizedData, selectedFields);
-  
-      // Update version if there are changes
-      if (hasChanges) {
-        console.log(`Updating version ${versionId} with changes:`, changes);
-        await updateVersionData(versionId, changes);
-        console.log(`Successfully updated version ${versionId}`);
-        results.success.push(versionId);
-      } else {
-        console.log(`No changes detected for version ${versionId}`);
-      }
-    } catch (error) {
-      console.error(`Failed to update version ${versionIdStr}:`, error);
-      results.failed.push(versionIdStr);
-      // Continue with other versions even if one fails
-    }
-  }
-  
-  // Show detailed results in console
-  console.log("Update results:", results);
-  
-  // Show results to user if there were any failures
-  if (results.failed.length > 0) {
-    console.warn(`Updates: ${results.success.length} successful, ${results.failed.length} failed`);
-    // Show alert with more details
-    alert(`Some updates failed (${results.failed.length}). 
-    ${results.success.length} updated successfully.
-    Check console for details.`);
-  } else if (results.success.length > 0) {
-    alert(`Successfully updated ${results.success.length} versions.`);
-  } else {
-    alert("No changes were made.");
-  }
-  
-  // Refresh the versions data after all updates
-  await fetchVersions(imageId);
-  
-  // Exit edit mode only if there were no failures, otherwise keep the form open
-  if (results.failed.length === 0) {
+    
+    // Exit edit mode
     setEditMode(false);
-  }
-};
-
-  // Render field content based on field type
-  const renderFieldContent = (version, fieldId, isEditable = false) => {
-    // Make sure version exists and has an id
-    if (!version || !version.id) {
-      return '';
+  };
+  
+  // Create a new version with a simple wrapper
+  const createNewVersion = async () => {
+    if (!newVersionTag.trim()) {
+      alert("Please enter a name for the new version");
+      return;
     }
     
-    const versionId = version.id;
-    const versionData = isEditable ? (editableData[versionId] || {}) : version;
-    
-    // Safely check if the field exists in versionData
-    if (versionData === undefined) {
-      console.warn(`Version data for ${versionId} is undefined`);
-      return '';
-    }
-    
-    // Check if field is an array type
-    const isArrayField = Array.isArray(versionData[fieldId]);
-    
-    // Special handling for postal addresses
-    if (fieldId === 'postal_addresses') {
-      const addresses = versionData[fieldId] || [];
+    try {
+      await handleCreateVersion({
+        tag: newVersionTag,
+        notes: notes,
+        createBlank: createBlank,
+        sourceVersionId: !createBlank && imageVersions.length > 0 ? imageVersions[0].id : null
+      });
       
-      if (isEditable) {
-        return (
-          <div className="space-y-2 max-h-40 overflow-y-auto">
-            {addresses.map((addr, idx) => (
-              <div key={idx} className="border border-border p-2 rounded bg-background-alt/50 text-sm">
-                <div className="grid grid-cols-2 gap-1">
-                  <div>
-                    <label className="text-xs text-text-muted">Street</label>
-                    <input
-                      value={addr?.street || ''}
-                      onChange={(e) => handleAddressChange(versionId, idx, 'street', e.target.value)}
-                      className="w-full px-2 py-1 text-sm border border-border rounded"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-text-muted">City</label>
-                    <input
-                      value={addr?.city || ''}
-                      onChange={(e) => handleAddressChange(versionId, idx, 'city', e.target.value)}
-                      className="w-full px-2 py-1 text-sm border border-border rounded"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-text-muted">State/Province</label>
-                    <input
-                      value={addr?.state || ''}
-                      onChange={(e) => handleAddressChange(versionId, idx, 'state', e.target.value)}
-                      className="w-full px-2 py-1 text-sm border border-border rounded"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-text-muted">Postal Code</label>
-                    <input
-                      value={addr?.postal_code || ''}
-                      onChange={(e) => handleAddressChange(versionId, idx, 'postal_code', e.target.value)}
-                      className="w-full px-2 py-1 text-sm border border-border rounded"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-xs text-text-muted">Country</label>
-                    <input
-                      value={addr?.country || ''}
-                      onChange={(e) => handleAddressChange(versionId, idx, 'country', e.target.value)}
-                      className="w-full px-2 py-1 text-sm border border-border rounded"
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-            <button
-              onClick={() => handleAddAddress(versionId)}
-              className="w-full mt-1 px-2 py-1 text-xs bg-background-alt text-text-muted rounded hover:bg-background-alt/80 border border-border"
-            >
-              + Add Address
-            </button>
-          </div>
-        );
-      } else {
-        // Display mode for addresses
-        if (!addresses || addresses.length === 0) {
-          return <span className="text-text-muted text-sm">No addresses</span>;
-        }
-        
-        return (
-          <div className="space-y-2">
-            {addresses.map((addr, idx) => (
-              <div key={idx} className="text-sm">
-                {addr?.street && <div>{addr.street}</div>}
-                <div>
-                  {addr?.city && addr.city}
-                  {addr?.city && addr?.state && ', '}
-                  {addr?.state && addr.state}
-                  {(addr?.city || addr?.state) && addr?.postal_code && ' '}
-                  {addr?.postal_code && addr.postal_code}
-                </div>
-                {addr?.country && <div>{addr.country}</div>}
-              </div>
-            ))}
-          </div>
-        );
-      }
+      // Reset form fields
+      setNewVersionTag('');
+      setNotes('');
+      setCreateBlank(false);
+    } catch (error) {
+      alert(`Failed to create version: ${error.message}`);
     }
+  };
+  
+  // Render field value based on its type
+  const renderFieldValue = (version, field, isEditing = false) => {
+    // Get effective data (either from edit state or version object)
+    const effectiveData = isEditing ? editData[version.id] || {} : version;
+    const fieldDef = Object.values(fieldGroups)
+      .flat()
+      .find(f => f.id === field);
     
-    // Handle regular array fields (like phone numbers, emails, URLs)
-    if (isEditable) {
-      return isArrayField ? (
-        <textarea
-          value={(versionData[fieldId] || []).join('\n')}
-          onChange={(e) => handleArrayInputChange(versionId, fieldId, e.target.value)}
-          className="w-full h-20 px-2 py-1 text-sm border border-border rounded"
+    if (!fieldDef) return null;
+    
+    if (field === 'postal_addresses') {
+      return (
+        <AddressField 
+          addresses={effectiveData[field]}
+          onChange={(value) => handleFieldChange(version.id, field, value)}
+          disabled={!isEditing}
         />
-      ) : (
-        <input
-          type="text"
-          value={versionData[fieldId] ?? ''}
-          onChange={(e) => handleInputChange(versionId, fieldId, e.target.value)}
-          className="w-full px-2 py-1 text-sm border border-border rounded"
+      );
+    } else if (fieldDef.isArray) {
+      return (
+        <ArrayField 
+          values={effectiveData[field]}
+          onChange={(value) => handleFieldChange(version.id, field, value)}
+          disabled={!isEditing}
         />
       );
     } else {
-      // Display mode
-      if (isArrayField) {
-        if (!versionData[fieldId] || versionData[fieldId].length === 0) {
-          return <span className="text-text-muted text-sm">None</span>;
-        }
-        return (versionData[fieldId] || []).map((item, idx) => (
-          <div key={idx} className="mb-1">{item}</div>
-        ));
-      } else {
-        return versionData[fieldId] !== undefined ? 
-          versionData[fieldId] : 
-          <span className="text-text-muted text-sm">None</span>;
-      }
+      return (
+        <TextField 
+          value={effectiveData[field]}
+          onChange={(value) => handleFieldChange(version.id, field, value)}
+          disabled={!isEditing}
+        />
+      );
     }
-  };  
+  };
+  
+  // Loading state
+  if (!imageVersions.length) {
+    return (
+      <div className="p-4">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Version Comparison</h2>
+          <button onClick={onClose} className="px-4 py-2 bg-background-alt text-text rounded">Close</button>
+        </div>
+        <div className="text-center py-8 text-text-muted">Loading versions...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4">
+      {/* Header with action buttons */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-bold">Version Comparison</h2>
         <div className="space-x-2">
@@ -480,13 +181,13 @@ const handleSaveChanges = async () => {
             <>
               <button 
                 onClick={handleSaveChanges}
-                className="px-4 py-2 bg-success text-white rounded hover:bg-success/90"
+                className="px-4 py-2 bg-success text-white rounded"
               >
                 Save Changes
               </button>
               <button 
                 onClick={() => setEditMode(false)}
-                className="px-4 py-2 bg-error text-white rounded hover:bg-error/90"
+                className="px-4 py-2 bg-error text-white rounded"
               >
                 Cancel
               </button>
@@ -494,24 +195,67 @@ const handleSaveChanges = async () => {
           ) : (
             <button 
               onClick={() => setEditMode(true)}
-              className="px-4 py-2 bg-primary text-white rounded hover:bg-primary/90"
+              className="px-4 py-2 bg-primary text-white rounded"
             >
-              Edit Versions
+              Edit All
             </button>
           )}
           <button 
             onClick={onClose}
-            className="px-4 py-2 bg-background-alt text-text rounded hover:bg-background-alt/90 border border-border"
+            className="px-4 py-2 bg-background-alt text-text rounded border border-border"
           >
             Close
           </button>
         </div>
       </div>
       
+      {/* New version creation */}
+      <div className="mb-4 p-3 border border-border rounded bg-background-alt">
+        <div className="flex flex-col space-y-2">
+          <div className="flex space-x-2">
+            <input
+              type="text"
+              value={newVersionTag}
+              onChange={(e) => setNewVersionTag(e.target.value)}
+              placeholder="New version name"
+              className="flex-1 px-3 py-2 bg-background border border-border rounded"
+            />
+            <button
+              onClick={createNewVersion}
+              disabled={!newVersionTag.trim()}
+              className="px-4 py-2 bg-secondary text-white rounded disabled:opacity-50"
+            >
+              Create Version
+            </button>
+          </div>
+          
+          <input
+            type="text"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Version notes (optional)"
+            className="w-full px-3 py-2 bg-background border border-border rounded"
+          />
+          
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="create-blank-pivot"
+              checked={createBlank}
+              onChange={() => setCreateBlank(!createBlank)}
+              className="mr-2"
+            />
+            <label htmlFor="create-blank-pivot" className="text-sm">
+              Start with empty version (don't copy current data)
+            </label>
+          </div>
+        </div>
+      </div>
+      
       {/* Field Selector */}
       <div className="mb-4 p-4 border border-border rounded bg-background-alt">
         <h3 className="text-sm font-medium mb-2">Select Fields to Compare:</h3>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {Object.entries(fieldGroups).map(([groupName, fields]) => (
             <div key={groupName} className="space-y-1">
               <h4 className="text-xs font-medium text-text-muted">{groupName}</h4>
@@ -539,41 +283,36 @@ const handleSaveChanges = async () => {
               <th className="p-3 text-left text-sm font-medium border-b border-r border-border">Field</th>
               {imageVersions.map(version => (
                 <th 
-                key={version.id} 
-                className="p-3 text-left text-sm font-medium border-b border-r border-border"
-              >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div>{version.tag}</div>
-                    <div className="text-xs text-text-muted">
-                      {new Date(version.created_at).toLocaleString()}
+                  key={version.id} 
+                  className="p-3 text-left text-sm font-medium border-b border-r border-border"
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div>{version.tag}</div>
+                      <div className="text-xs text-text-muted">
+                        {new Date(version.created_at).toLocaleString()}
+                      </div>
                     </div>
-                  </div>
-                  {!editMode && imageVersions.length > 1 && (
-                    <button
-                      onClick={() => handleDeleteVersion(version.id)}
-                      disabled={operationStatus[`delete-version-${version.id}`]?.loading}
-                      className="ml-2 p-1 text-error bg-background rounded hover:bg-background-alt/90 transition-colors"
-                      title="Delete Version"
-                    >
-                      {operationStatus[`delete-version-${version.id}`]?.loading ? (
-                        <span className="inline-block animate-spin h-4 w-4 border-2 border-error border-t-transparent rounded-full"></span>
-                      ) : (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    {!editMode && imageVersions.length > 1 && (
+                      <button
+                        onClick={() => handleDeleteVersion(version.id)}
+                        className="ml-2 p-1 text-error hover:bg-background-alt/90 rounded"
+                        title="Delete Version"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
-                      )}
-                    </button>
-                  )}
-                </div>
-              </th>
+                      </button>
+                    )}
+                  </div>
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {/* Render a row for each selected field */}
             {selectedFields.map(fieldId => {
-              // Find field label from our field groups
+              // Find field label
               let fieldLabel = '';
               Object.values(fieldGroups).forEach(group => {
                 const field = group.find(f => f.id === fieldId);
@@ -583,14 +322,12 @@ const handleSaveChanges = async () => {
               return (
                 <tr key={fieldId} className="hover:bg-background-alt/50">
                   <td className="p-3 font-medium border-r border-b border-border">
-                    {fieldLabel || fieldId}
+                    {fieldLabel}
                   </td>
-                  {(imageVersions || []).map(version => (
-                    version && version.id ? (
-                      <td key={version.id} className="p-3 border-r border-b border-border">
-                        {renderFieldContent(version, fieldId, editMode)}
-                      </td>
-                    ) : null
+                  {imageVersions.map(version => (
+                    <td key={version.id} className="p-3 border-r border-b border-border">
+                      {renderFieldValue(version, fieldId, editMode)}
+                    </td>
                   ))}
                 </tr>
               );
