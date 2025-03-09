@@ -5,46 +5,64 @@ import { api } from '../../services/api';
 function UploadControls({ onStatusChange }) {
   const [url, setUrl] = useState('');
   const [isDragging, setIsDragging] = useState(false);
-  const { loading, refreshImages } = useDb();
+  const { refreshImages } = useDb();
   const dropRef = useRef(null);
 
-  const processFiles = async (files) => {
+  // This function replaces the processFiles function in UploadControls.jsx
+
+const processFiles = async (files) => {
     const imageFiles = Array.from(files).filter(file => 
       file.type.startsWith('image/')
     );
-
+  
     if (imageFiles.length === 0) {
       onStatusChange('No valid image files');
-      setTimeout(() => onStatusChange(''), 3000);
       return;
     }
-
+  
     let successCount = 0;
     let failCount = 0;
-
+    let errorMsg = '';
+  
     onStatusChange('Uploading...');
-
+  
     for (const file of imageFiles) {
       try {
-        await api.uploadImageFile(file);
-        successCount++;
+        console.log(`Uploading file: ${file.name}, size: ${file.size} bytes`);
+        const response = await api.uploadImageFile(file);
+        
+        if (response && response.success) {
+          successCount++;
+        } else {
+          failCount++;
+          errorMsg = response?.message || 'Unknown error';
+          console.error('Upload failed with response:', response);
+        }
       } catch (error) {
-        console.error('Failed to upload file:', file.name, error);
+        console.error('Upload caught error:', error.message);
         failCount++;
+        errorMsg = error.message;
       }
     }
-
-    await refreshImages();
+  
+    try {
+      await refreshImages();
+    } catch (error) {
+      console.error('Failed to refresh images:', error);
+    }
     
     if (failCount === 0) {
       onStatusChange(`Uploaded ${successCount} image${successCount !== 1 ? 's' : ''}`);
+      // Auto-clear success messages after a delay
+      setTimeout(() => onStatusChange(''), 5000);
     } else {
-      onStatusChange(`Upload results: ${successCount} succeeded, ${failCount} failed`);
+      // For error messages, create a permanent message that doesn't auto-clear
+      const statusMessage = `Upload failed (${failCount} files): ${errorMsg}`;
+      console.error(statusMessage);  // Also log to console
+      onStatusChange(statusMessage);
+      // Don't auto-clear error messages
     }
-    
-    // Clear status after a delay
-    setTimeout(() => onStatusChange(''), 3000);
-  };
+  };  
 
   const handleFileChange = async (e) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -73,8 +91,6 @@ function UploadControls({ onStatusChange }) {
   const handleDragLeave = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    // Only set isDragging to false if we're leaving the drop target
-    // and not entering a child element
     if (dropRef.current && !dropRef.current.contains(e.relatedTarget)) {
       setIsDragging(false);
     }
@@ -91,17 +107,20 @@ function UploadControls({ onStatusChange }) {
   
     try {
       onStatusChange('Uploading image...');
-      await api.uploadImageUrl(url);
+      const response = await api.uploadImageUrl(url);
       setUrl('');
       onStatusChange('Image uploaded successfully');
       await refreshImages();
-      // Clear status after a delay
-      setTimeout(() => onStatusChange(''), 3000);
-    } catch (error) {
-      onStatusChange(`Upload failed: ${error.message}`);
+      
+      // Auto-clear success message after a delay
       setTimeout(() => onStatusChange(''), 5000);
+    } catch (error) {
+      const errorMessage = `Upload failed: ${error.message}`;
+      console.error(errorMessage);  // Log to console
+      onStatusChange(errorMessage);
+      // Don't auto-clear error messages
     }
-  };
+  };  
 
   return (
     <div className="flex items-center space-x-2">
@@ -113,11 +132,10 @@ function UploadControls({ onStatusChange }) {
           onChange={(e) => setUrl(e.target.value)}
           placeholder="Image URL"
           className="w-36 sm:w-48 px-2 py-1 bg-background-alt border border-border rounded-l text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-          disabled={loading}
         />
         <button
           type="submit"
-          disabled={loading || !url.trim()}
+          disabled={!url.trim()}
           className="px-3 py-1 bg-primary text-white rounded-r text-sm hover:bg-primary/90 disabled:opacity-50"
         >
           Add
@@ -139,12 +157,10 @@ function UploadControls({ onStatusChange }) {
           accept="image/*"
           onChange={handleFileChange}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-          disabled={loading}
           multiple
         />
         <button
-          className={`px-3 py-1 ${isDragging ? 'bg-primary' : 'bg-secondary'} text-white rounded text-sm hover:bg-secondary/90 disabled:opacity-50 flex items-center transition-colors`}
-          disabled={loading}
+          className={`px-3 py-1 ${isDragging ? 'bg-primary' : 'bg-secondary'} text-white rounded text-sm hover:bg-secondary/90 flex items-center transition-colors`}
         >
           <svg 
             className="w-4 h-4 mr-1" 

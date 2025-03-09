@@ -287,20 +287,42 @@ async def get_full_image(image_id: int):
 @router.post("/upload/file")
 async def upload_image_file(file: UploadFile = File(...)):
     if not image_db:
-        raise HTTPException(status_code=400, detail="Database not initialized")
+        raise HTTPException(status_code=400, detail="Database not initialized - please connect to a database first")
     
-    logger.info(f"Received file upload: {file.filename}")
+    logger.info(f"Received file upload: {file.filename}, content_type: {file.content_type}")
+    
+    # Validate file is an image
+    if not file.content_type.startswith('image/'):
+        logger.warning(f"Non-image file uploaded: {file.filename}, content_type: {file.content_type}")
+        raise HTTPException(status_code=400, detail=f"File must be an image (received {file.content_type})")
     
     try:
         # Read file content
         contents = await file.read()
+        logger.info(f"Read {len(contents)} bytes from file {file.filename}")
+        
+        if not contents or len(contents) == 0:
+            logger.error(f"Empty file content for {file.filename}")
+            raise HTTPException(status_code=400, detail="File content is empty - please select a valid image")
         
         # Get file metadata
         metadata = {
             'filename': file.filename
         }
         
+        # Try to verify it's a valid image
+        try:
+            from PIL import Image
+            from io import BytesIO
+            img = Image.open(BytesIO(contents))
+            img.verify()  # Verify it's a valid image
+            logger.info(f"Image verified: {file.filename}, format: {img.format}, size: {getattr(img, 'size', 'unknown')}")
+        except Exception as img_error:
+            logger.error(f"Invalid image format: {file.filename}, error: {img_error}")
+            raise HTTPException(status_code=400, detail=f"Invalid image format: {str(img_error)}")
+        
         # Save to database
+        logger.info(f"Saving image to database: {file.filename}")
         success = await image_db.save_image(contents, metadata)
         
         if success:
@@ -308,12 +330,15 @@ async def upload_image_file(file: UploadFile = File(...)):
             return {"success": True, "message": "Image uploaded successfully"}
         else:
             logger.warning(f"Failed to save image: {file.filename}")
-            raise HTTPException(status_code=400, detail="Failed to save image (possibly a duplicate)")
+            raise HTTPException(status_code=400, detail="Failed to save image - it may be a duplicate (already exists in database)")
             
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         logger.error(f"Error uploading file: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-    
+        raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
+
 @router.post("/upload/url")
 async def upload_image_url(url: str = Form(...)):
     if not image_db:
