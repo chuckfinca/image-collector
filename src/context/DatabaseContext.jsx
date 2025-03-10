@@ -207,53 +207,6 @@ export const DatabaseProvider = ({ children }) => {
     }
   }, [versions, fetchVersions, handleError]);
 
-  const deleteVersion = useCallback(async (versionId) => {
-    try {
-      setOperationStatus(prev => ({
-        ...prev,
-        [`delete-version-${versionId}`]: { loading: true }
-      }));
-      
-      // Find the image ID for this version
-      let imageId = null;
-      for (const [imgId, versionList] of Object.entries(versions)) {
-        if (versionList.some(v => v.id === versionId)) {
-          imageId = parseInt(imgId);
-          break;
-        }
-      }
-      
-      if (!imageId) {
-        throw new Error(`Could not find image ID for version ${versionId}`);
-      }
-      
-      // Delete the version
-      await api.deleteVersion(versionId);
-      
-      // Refresh versions and update active version
-      await fetchVersions(imageId);
-      
-      setOperationStatus(prev => ({
-        ...prev,
-        [`delete-version-${versionId}`]: { success: true }
-      }));
-      
-      return true;
-    } catch (error) {
-      handleError(error, `delete-version-${versionId}`);
-      throw error;
-    } finally {
-      // Clear status after a delay
-      setTimeout(() => {
-        setOperationStatus(prev => {
-          const newStatus = { ...prev };
-          delete newStatus[`delete-version-${versionId}`];
-          return newStatus;
-        });
-      }, 3000);
-    }
-  }, [versions, fetchVersions, handleError]);
-
   // Image operations
   const extractContactInfo = useCallback(async (imageId) => {
     try {
@@ -289,30 +242,6 @@ export const DatabaseProvider = ({ children }) => {
     }
   }, [refreshImages, fetchVersions, handleError]);
 
-  const deleteImage = useCallback(async (imageId) => {
-    try {
-      await api.deleteImage(imageId);
-      await refreshImages();
-      
-      // Clean up versions state
-      setVersions(prev => ({...prev, [imageId]: response.versions}));
-      if (activeVersion) {
-        setActiveVersions(prev => ({...prev, [imageId]: activeVersion.id}));
-      }
-      
-      // Clean up active versions state
-      setActiveVersions(prev => {
-        const newActiveVersions = {...prev};
-        delete newActiveVersions[imageId];
-        return newActiveVersions;
-      });
-      
-    } catch (error) {
-      handleError(error, `delete-${imageId}`);
-      throw error;
-    }
-  }, [refreshImages, handleError]);
-
   // Helper function to get version data for an image
   const getVersionData = useCallback((imageId) => {
     const imageVersions = versions[imageId] || [];
@@ -324,6 +253,90 @@ export const DatabaseProvider = ({ children }) => {
     
     return imageVersions.find(v => v.id === activeVersionId) || null;
   }, [versions, activeVersions]);
+
+  const deleteImage = useCallback(async (imageId) => {
+    try {
+      setOperationStatus(prev => ({
+        ...prev,
+        [`delete-image-${imageId}`]: { loading: true }
+      }));
+
+      await api.deleteImage(imageId);
+      
+      // Update local state
+      setImages(prev => prev.filter(img => img.id !== imageId));
+      setVersions(prev => {
+        const newVersions = {...prev};
+        delete newVersions[imageId];
+        return newVersions;
+      });
+      setActiveVersions(prev => {
+        const newState = {...prev};
+        delete newState[imageId];
+        return newState;
+      });
+      
+      setOperationStatus(prev => ({
+        ...prev,
+        [`delete-image-${imageId}`]: { success: true }
+      }));
+      
+      return true;
+    } catch (error) {
+      handleError(error, `delete-image-${imageId}`);
+      throw error;
+    } finally {
+      // Clear status after delay
+      setTimeout(() => {
+        setOperationStatus(prev => {
+          const newState = {...prev};
+          delete newState[`delete-image-${imageId}`];
+          return newState;
+        });
+      }, 3000);
+    }
+  }, [setImages, setVersions, setActiveVersions, handleError]);
+
+  const deleteVersion = useCallback(async (versionId) => {
+    try {
+      setOperationStatus(prev => ({
+        ...prev,
+        [`delete-version-${versionId}`]: { loading: true }
+      }));
+      
+      // Find associated image
+      let imageId = null;
+      for (const [imgId, versionList] of Object.entries(versions)) {
+        if (versionList.some(v => v.id === versionId)) {
+          imageId = parseInt(imgId);
+          break;
+        }
+      }
+      
+      if (!imageId) throw new Error(`Cannot find image for version ${versionId}`);
+      
+      await api.deleteVersion(versionId);
+      await fetchVersions(imageId);
+      
+      setOperationStatus(prev => ({
+        ...prev,
+        [`delete-version-${versionId}`]: { success: true }
+      }));
+      
+      return true;
+    } catch (error) {
+      handleError(error, `delete-version-${versionId}`);
+      throw error;
+    } finally {
+      setTimeout(() => {
+        setOperationStatus(prev => {
+          const newState = {...prev};
+          delete newState[`delete-version-${versionId}`];
+          return newState;
+        });
+      }, 3000);
+    }
+  }, [versions, fetchVersions, handleError]);
 
   const value = {
     // Core state

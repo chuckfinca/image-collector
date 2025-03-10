@@ -233,33 +233,6 @@ async def extract_contact(image_id: int):
         logger.error(f"Error extracting contact info: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Extraction error: {str(e)}")
 
-@router.delete("/image/{image_id}")
-async def delete_image(image_id: int):
-    if not image_db:
-        raise HTTPException(status_code=400, detail="Database not initialized")
-    
-    try:
-        with sqlite3.connect(image_db.db_path) as conn:
-            cursor = conn.cursor()
-            
-            # Delete related records first
-            cursor.execute("DELETE FROM phone_numbers WHERE image_id = ?", (image_id,))
-            cursor.execute("DELETE FROM email_addresses WHERE image_id = ?", (image_id,))
-            cursor.execute("DELETE FROM postal_addresses WHERE image_id = ?", (image_id,))
-            cursor.execute("DELETE FROM url_addresses WHERE image_id = ?", (image_id,))
-            cursor.execute("DELETE FROM social_profiles WHERE image_id = ?", (image_id,))
-            
-            # Delete the main image record
-            cursor.execute("DELETE FROM images WHERE id = ?", (image_id,))
-            
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Image not found")
-                
-            return {"success": True, "message": "Image deleted successfully"}
-            
-    except sqlite3.Error as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    
 @router.get("/image/{image_id}")
 async def get_full_image(image_id: int):
     if not image_db:
@@ -454,20 +427,36 @@ async def update_version(
     else:
         raise HTTPException(status_code=500, detail="Failed to update version")
     
-@router.delete("/version/{version_id}")
-async def delete_version(
-    version_id: int,
-    image_db: ImageDatabase = Depends(get_image_db)
-):
-    """Delete a specific version."""
+# Error status code mapping
+ERROR_CODES = {
+    "not_found": 404,
+    "validation_error": 400,
+    "only_version": 400,
+    "duplicate": 409
+}
+
+def handle_result(result, success_message):
+    """Convert operation result to HTTP response"""
+    if result.success:
+        return {"success": True, "message": success_message, **({"data": result.data} if result.data else {})}
+    
+    status_code = ERROR_CODES.get(result.error_type, 500)
+    raise HTTPException(status_code=status_code, detail=result.error_message)
+
+@router.delete("/image/{image_id}")
+async def delete_image(image_id: int):
+    """Delete an image and all its data"""
     if not image_db:
         raise HTTPException(status_code=400, detail="Database not initialized")
     
-    logger.info(f"Deleting version {version_id}")
+    result = image_db.delete_image(image_id)
+    return handle_result(result, "Image deleted successfully")
+
+@router.delete("/version/{version_id}")
+async def delete_version(version_id: int, image_db: ImageDatabase = Depends(get_image_db)):
+    """Delete a version and all its data"""
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
     
-    success = image_db.delete_version(version_id)
-    
-    if success:
-        return {"success": True, "message": "Version deleted successfully"}
-    else:
-        raise HTTPException(status_code=500, detail="Failed to delete version")
+    result = image_db.delete_version(version_id)
+    return handle_result(result, "Version deleted successfully")

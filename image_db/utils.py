@@ -36,3 +36,24 @@ def create_thumbnail(image_data: bytes, size: tuple = (200, 200)) -> Union[str, 
     except Exception as e:
         logger.error(f"Thumbnail creation error: {str(e)}", exc_info=True)
         return None
+    
+# Add to utils.py
+class OperationResult:
+    """Generic result object for database operations"""
+    def __init__(self, success=False, data=None, error_type=None, error_message=None):
+        self.success = success
+        self.data = data
+        self.error_type = error_type
+        self.error_message = error_message
+    
+    @classmethod
+    def success(cls, data=None):
+        return cls(success=True, data=data)
+    
+    @classmethod
+    def error(cls, error_type, message, data=None):
+        return cls(success=False, error_type=error_type, error_message=message, data=data)
+    
+    @classmethod
+    def not_found(cls, message="Resource not found"):
+        return cls.error("not_found", message)

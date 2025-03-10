@@ -8,6 +8,8 @@ from io import BytesIO
 import base64
 import aiohttp
 import logging
+
+from .utils import OperationResult
 from .models import ContactInfo, ServerResponse
 
 logger = logging.getLogger("image-db")
@@ -1048,66 +1050,6 @@ class ImageDatabase:
         except Exception as e:
             logger.error(f"Error setting active version: {e}")
             return False
-
-    def delete_version(self, version_id: int) -> bool:
-        """
-        Delete a specific version.
-        
-        Args:
-            version_id: ID of the version to delete
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                # Check if this is the only version for an image
-                cursor.execute("""
-                    SELECT image_id, COUNT(*) as version_count
-                    FROM image_versions
-                    WHERE image_id = (SELECT image_id FROM image_versions WHERE id = ?)
-                    GROUP BY image_id
-                """, (version_id,))
-                
-                result = cursor.fetchone()
-                if result and result[1] <= 1:
-                    # This is the only version, don't allow deletion
-                    logger.error(f"Cannot delete the only version {version_id} for image {result[0]}")
-                    return False
-                
-                # Check if this is the active version
-                cursor.execute("SELECT is_active, image_id FROM image_versions WHERE id = ?", (version_id,))
-                version_info = cursor.fetchone()
-                
-                if not version_info:
-                    logger.error(f"Version ID {version_id} not found")
-                    return False
-                    
-                is_active, image_id = version_info
-                
-                # Delete the version
-                cursor.execute("DELETE FROM image_versions WHERE id = ?", (version_id,))
-                
-                # If we deleted the active version, make another one active
-                if is_active:
-                    # Find the most recent remaining version
-                    cursor.execute("""
-                        SELECT id FROM image_versions
-                        WHERE image_id = ?
-                        ORDER BY created_at DESC
-                        LIMIT 1
-                    """, (image_id,))
-                    
-                    new_active = cursor.fetchone()
-                    if new_active:
-                        cursor.execute("UPDATE image_versions SET is_active = TRUE WHERE id = ?", (new_active[0],))
-                
-                return True
-        except Exception as e:
-            logger.error(f"Error deleting version: {e}")
-            return False
         
     async def extract_contact_info(self, image_id: int) -> dict:
         """Extract contact information from an image using the LLM server."""
@@ -1241,3 +1183,112 @@ class ImageDatabase:
         except Exception as e:
             logger.error(f"Error extracting contact info: {e}", exc_info=True)
             return {"success": False, "error": f"Contact extraction failed: {str(e)}"}
+            
+    def delete_image(self, image_id: int) -> OperationResult:
+        """Delete an image and all associated data"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                # Verify image exists
+                cursor.execute("SELECT id FROM images WHERE id = ?", (image_id,))
+                if not cursor.fetchone():
+                    return OperationResult.not_found(f"Image ID {image_id} not found")
+                
+                # Get all version IDs for this image
+                cursor.execute("SELECT id FROM image_versions WHERE image_id = ?", (image_id,))
+                version_ids = [row['id'] for row in cursor.fetchall()]
+                
+                # Delete all associated data
+                for version_id in version_ids:
+                    self._delete_version_data(conn, version_id)
+                self._delete_image_data(conn, image_id)
+                
+                logger.info(f"Deleted image {image_id} with {len(version_ids)} versions")
+                return OperationResult.success()
+                    
+        except Exception as e:
+            logger.error(f"Error deleting image: {e}", exc_info=True)
+            return OperationResult.error("database_error", str(e))
+
+    def delete_version(self, version_id: int) -> OperationResult:
+        """Delete a version and all its data"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                # Get version info
+                cursor.execute("SELECT id, image_id, is_active FROM image_versions WHERE id = ?", (version_id,))
+                version = cursor.fetchone()
+                if not version:
+                    return OperationResult.not_found(f"Version {version_id} not found")
+                
+                # Check if this is the only version
+                cursor.execute(
+                    "SELECT COUNT(*) as count FROM image_versions WHERE image_id = ?", 
+                    (version['image_id'],)
+                )
+                if cursor.fetchone()['count'] <= 1:
+                    return OperationResult.error(
+                        "only_version", 
+                        f"Cannot delete the only version for image {version['image_id']}"
+                    )
+                
+                # Delete the version data
+                self._delete_version_data(conn, version_id)
+                
+                # Set new active version if needed
+                if version['is_active']:
+                    self._set_new_active_version(conn, version['image_id'])
+                
+                return OperationResult.success()
+                    
+        except Exception as e:
+            logger.error(f"Error deleting version: {e}", exc_info=True)
+            return OperationResult.error("database_error", str(e))
+
+    def _delete_version_data(self, conn, version_id: int) -> None:
+        """Delete all data for a version"""
+        cursor = conn.cursor()
+        
+        # Delete from relation tables with version_id foreign key
+        cursor.execute("DELETE FROM version_phone_numbers WHERE version_id = ?", (version_id,))
+        cursor.execute("DELETE FROM version_email_addresses WHERE version_id = ?", (version_id,))
+        cursor.execute("DELETE FROM version_postal_addresses WHERE version_id = ?", (version_id,))
+        cursor.execute("DELETE FROM version_url_addresses WHERE version_id = ?", (version_id,))
+        cursor.execute("DELETE FROM version_social_profiles WHERE version_id = ?", (version_id,))
+        
+        # Delete from version_data table
+        cursor.execute("DELETE FROM version_data WHERE version_id = ?", (version_id,))
+        
+        # Finally delete the version itself
+        cursor.execute("DELETE FROM image_versions WHERE id = ?", (version_id,))
+
+    def _delete_image_data(self, conn, image_id: int) -> None:
+        """Delete all data for an image"""
+        cursor = conn.cursor()
+        
+        # Delete from relation tables with image_id foreign key
+        cursor.execute("DELETE FROM phone_numbers WHERE image_id = ?", (image_id,))
+        cursor.execute("DELETE FROM email_addresses WHERE image_id = ?", (image_id,))
+        cursor.execute("DELETE FROM postal_addresses WHERE image_id = ?", (image_id,))
+        cursor.execute("DELETE FROM url_addresses WHERE image_id = ?", (image_id,))
+        cursor.execute("DELETE FROM social_profiles WHERE image_id = ?", (image_id,))
+        
+        # Finally delete the image itself
+        cursor.execute("DELETE FROM images WHERE id = ?", (image_id,))
+        
+    def _set_new_active_version(self, conn, image_id: int) -> None:
+        """Set the most recent version as active"""
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE image_versions 
+            SET is_active = TRUE 
+            WHERE id = (
+                SELECT id FROM image_versions 
+                WHERE image_id = ? 
+                ORDER BY created_at DESC LIMIT 1
+            )
+        """, (image_id,))
