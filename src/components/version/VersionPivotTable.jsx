@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useDb } from '../../context/DatabaseContext';
 import { TextField, ArrayField, AddressField } from '../fields/SimpleFields';
 import useVersionManagement from '../../hooks/useVersionManagement';
+import { SocialProfilesField } from '../fields/SocialProfilesField';
 
 function VersionPivotTable({ imageId, onClose }) {
   const { fetchVersions, updateVersion } = useDb();
@@ -11,7 +12,8 @@ function VersionPivotTable({ imageId, onClose }) {
   const [editData, setEditData] = useState({});
   const [selectedFields, setSelectedFields] = useState([
     'given_name', 'family_name', 'organization_name', 
-    'phone_numbers', 'email_addresses', 'postal_addresses'
+    'phone_numbers', 'email_addresses', 'postal_addresses',
+    'social_profiles'  // Added social_profiles to default selected fields
   ]);
   
   // Use the shared version management hook
@@ -74,13 +76,34 @@ function VersionPivotTable({ imageId, onClose }) {
   
   // Handle field changes in edit mode
   const handleFieldChange = (versionId, field, value) => {
-    setEditData(prev => ({
-      ...prev,
-      [versionId]: {
-        ...prev[versionId],
-        [field]: value
+    console.log(`Field change in VersionPivotTable: ${field}`, value);
+    
+    setEditData(prev => {
+      // Make a deep copy of previous state
+      const newData = { ...prev };
+      
+      // Ensure this version exists in the edit data
+      if (!newData[versionId]) {
+        newData[versionId] = {};
       }
-    }));
+      
+      // Handle special cases for complex data types
+      if (field === 'social_profiles') {
+        // Ensure we're creating a new array reference
+        newData[versionId] = {
+          ...newData[versionId],
+          [field]: [...value]  // Create a proper copy of the array
+        };
+      } else {
+        // For other fields, just update normally
+        newData[versionId] = {
+          ...newData[versionId],
+          [field]: value
+        };
+      }
+      
+      return newData;
+    });
   };
   
   // Handle saving changes
@@ -88,7 +111,9 @@ function VersionPivotTable({ imageId, onClose }) {
     // Save each version's changes
     for (const [versionId, data] of Object.entries(editData)) {
       try {
+        console.log(`Preparing to save version ${versionId} with data:`, data);
         await updateVersion(parseInt(versionId), data);
+        console.log(`Successfully saved version ${versionId}`);
       } catch (error) {
         console.error(`Failed to update version ${versionId}:`, error);
       }
@@ -132,18 +157,20 @@ function VersionPivotTable({ imageId, onClose }) {
     
     if (!fieldDef) return null;
     
+    // Handle field based on its type
     if (field === 'postal_addresses') {
       return (
         <AddressField 
-          addresses={effectiveData[field]}
+          addresses={effectiveData[field] || []}
           onChange={(value) => handleFieldChange(version.id, field, value)}
           disabled={!isEditing}
         />
       );
     } else if (field === 'social_profiles') {
+      // Properly handle social profiles with the correct component
       return (
         <SocialProfilesField 
-          profiles={effectiveData[field]}
+          profiles={effectiveData[field] || []}
           onChange={(value) => handleFieldChange(version.id, field, value)}
           disabled={!isEditing}
         />
@@ -151,7 +178,7 @@ function VersionPivotTable({ imageId, onClose }) {
     } else if (fieldDef.isArray) {
       return (
         <ArrayField 
-          values={effectiveData[field]}
+          values={effectiveData[field] || []}
           onChange={(value) => handleFieldChange(version.id, field, value)}
           disabled={!isEditing}
         />
