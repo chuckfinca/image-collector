@@ -44,7 +44,8 @@ function VersionPivotTable({ imageId, onClose }) {
     'Contact Information': [
       { id: 'phone_numbers', label: 'Phone Numbers', isArray: true },
       { id: 'email_addresses', label: 'Email Addresses', isArray: true },
-      { id: 'url_addresses', label: 'URLs', isArray: true }
+      { id: 'url_addresses', label: 'URLs', isArray: true },
+      { id: 'social_profiles', label: 'Social Profiles', isComplex: true }
     ],
     'Address Information': [
       { id: 'postal_addresses', label: 'Postal Addresses', isComplex: true }
@@ -135,6 +136,14 @@ function VersionPivotTable({ imageId, onClose }) {
       return (
         <AddressField 
           addresses={effectiveData[field]}
+          onChange={(value) => handleFieldChange(version.id, field, value)}
+          disabled={!isEditing}
+        />
+      );
+    } else if (field === 'social_profiles') {
+      return (
+        <SocialProfilesField 
+          profiles={effectiveData[field]}
           onChange={(value) => handleFieldChange(version.id, field, value)}
           disabled={!isEditing}
         />

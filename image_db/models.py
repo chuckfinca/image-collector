@@ -61,6 +61,7 @@ class ImageUpdate(BaseModel):
     email_addresses: Optional[List[str]] = None
     url_addresses: Optional[List[str]] = None
     postal_addresses: Optional[List[Dict[str, Optional[str]]]] = None
+    social_profiles: Optional[List[Dict[str, str]]] = None
     
     @validator('email_addresses', each_item=True)
     def validate_email(cls, v):
