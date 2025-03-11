@@ -161,6 +161,8 @@ export const AddressField = ({ addresses, onChange, disabled, label }) => {
   };
 
 // A reusable group of fields that can be used in both views
+// Updated VersionFields component in SimpleFields.jsx to properly handle social profiles
+
 export const VersionFields = ({ data, onChange, disabled, fieldFilter }) => {
     // Define all the fields with their groups
     const allFields = {
@@ -197,7 +199,24 @@ export const VersionFields = ({ data, onChange, disabled, fieldFilter }) => {
     // Handle changes for any field
     const handleFieldChange = (field, value) => {
       if (onChange) {
-        onChange({ ...data, [field]: value });
+        console.log(`Field ${field} changed to:`, value);
+        
+        // Create a deep copy of the current data
+        const updatedData = { ...data };
+        
+        // Handle special case for social_profiles to ensure it's properly
+        // initialized and updated
+        if (field === 'social_profiles') {
+          console.log('Updating social profiles:', value);
+          // Ensure we create a new array reference
+          updatedData.social_profiles = [...value];
+        } else {
+          // For other fields, just update normally
+          updatedData[field] = value;
+        }
+        
+        console.log('Updated data object:', updatedData);
+        onChange(updatedData);
       }
     };
     
@@ -245,4 +264,3 @@ export const VersionFields = ({ data, onChange, disabled, fieldFilter }) => {
       </div>
     );
   };
-  

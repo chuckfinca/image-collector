@@ -803,19 +803,46 @@ class ImageDatabase:
                 # Update social profiles
                 if 'social_profiles' in update_data:
                     logger.info(f"Updating social profiles for version {version_id}")
+                    
+                    # Delete existing profiles first
                     cursor.execute("DELETE FROM version_social_profiles WHERE version_id = ?", (version_id,))
-                    for profile in (update_data['social_profiles'] or []):
-                        if profile and (profile.get('service') or profile.get('username') or profile.get('url')):
+                    
+                    # Get profiles array, handling None/null
+                    profiles = update_data.get('social_profiles') or []
+                    
+                    # Ensure it's a list
+                    if not isinstance(profiles, list):
+                        logger.warning(f"Expected list for social_profiles, got {type(profiles)}")
+                        profiles = []
+                    
+                    # Process each profile
+                    for profile in profiles:
+                        if not isinstance(profile, dict):
+                            logger.warning(f"Skipping non-dict profile: {profile}")
+                            continue
+                        
+                        # Use get() with defaults to handle missing fields
+                        service = profile.get('service', '')
+                        url = profile.get('url', '')
+                        username = profile.get('username', '') 
+                        
+                        # Log the insertion for debugging
+                        logger.info(f"Inserting profile: service='{service}', url='{url}', username='{username}'")
+                        
+                        try:
+                            # Use parameterized query for safety
                             cursor.execute("""
                                 INSERT INTO version_social_profiles (version_id, service, url, username)
                                 VALUES (?, ?, ?, ?)
-                            """, (
-                                version_id,
-                                profile.get('service', ''),
-                                profile.get('url', ''),
-                                profile.get('username', '')
-                            ))
-                
+                            """, (version_id, service, url, username))
+                        except Exception as e:
+                            logger.error(f"Error inserting profile: {e}")
+                    
+                    # Verify profiles were inserted
+                    cursor.execute("SELECT COUNT(*) FROM version_social_profiles WHERE version_id = ?", (version_id,))
+                    count = cursor.fetchone()[0]
+                    logger.info(f"Inserted {count} profiles for version {version_id}")
+
                 # Update version metadata if provided
                 metadata_fields = {
                     k: v for k, v in update_data.items() 
@@ -914,18 +941,7 @@ class ImageDatabase:
                     version_data['url_addresses'] = [r[0] for r in cursor.fetchall()]
                     
                     # Get social profiles
-                    cursor.execute("SELECT service, url, username FROM version_social_profiles WHERE version_id = ?", (version_id,))
-                    social_profiles = []
-                    
-                    for row in cursor.fetchall():
-                        profile = {
-                            'service': row[0], 
-                            'url': row[1], 
-                            'username': row[2]
-                        }
-                        social_profiles.append(profile)
-                    
-                    version_data['social_profiles'] = social_profiles
+                    version_data['social_profiles'] = self._load_version_social_profiles(conn, version_id)
                     
                     versions.append(version_data)
                     
@@ -1292,3 +1308,45 @@ class ImageDatabase:
                 ORDER BY created_at DESC LIMIT 1
             )
         """, (image_id,))
+        
+    def _load_version_social_profiles(self, conn, version_id):
+        """Helper function to load social profiles for a version"""
+        try:
+            cursor = conn.cursor()
+            
+            # Execute with explicit column names to ensure correct order
+            query = """
+                SELECT service, url, username 
+                FROM version_social_profiles 
+                WHERE version_id = ?
+            """
+            cursor.execute(query, (version_id,))
+            
+            rows = cursor.fetchall()
+            logger.info(f"Found {len(rows)} social profiles for version {version_id}")
+            
+            profiles = []
+            for row in rows:
+                # If using column names, use dict(row) approach
+                if isinstance(row, sqlite3.Row):
+                    profile = {
+                        'service': row['service'],
+                        'url': row['url'],
+                        'username': row['username']
+                    }
+                else:
+                    # If using indices, ensure correct order in the SELECT statement
+                    profile = {
+                        'service': row[0],
+                        'url': row[1],
+                        'username': row[2]
+                    }
+                
+                logger.info(f"Loaded profile: {profile}")
+                profiles.append(profile)
+            
+            return profiles
+        except Exception as e:
+            logger.error(f"Error loading social profiles: {e}", exc_info=True)
+            return []
+    

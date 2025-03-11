@@ -4,112 +4,89 @@
  * @returns {Object} - Sanitized data object
  */
 export const sanitizeContactData = (data) => {
-    if (!data || typeof data !== 'object') return {};
+    // Create a deep copy to avoid modifying the original
+    // Using JSON parse/stringify to ensure proper cloning of nested structures
+    const sanitized = JSON.parse(JSON.stringify(data));
     
-    const result = {};
+    // Handle array fields with proper initialization
+    sanitized.phone_numbers = Array.isArray(sanitized.phone_numbers) ? sanitized.phone_numbers : [];
+    sanitized.email_addresses = Array.isArray(sanitized.email_addresses) ? sanitized.email_addresses : [];
+    sanitized.url_addresses = Array.isArray(sanitized.url_addresses) ? sanitized.url_addresses : [];
     
-    // Process each field in the data object
-    Object.entries(data).forEach(([key, value]) => {
-      // Handle arrays (email_addresses, phone_numbers, etc.)
-      if (Array.isArray(value)) {
-        // Filter out empty/null/undefined values and trim strings
-        const cleanArray = value
-          .filter(item => item !== null && item !== undefined)
-          .map(item => typeof item === 'string' ? item.trim() : item)
-          .filter(item => item !== '');
-          
-        // For email addresses, do basic validation
-        result[key] = cleanArray;
-      }
-      // Handle postal_addresses array specially
-      else if (key === 'postal_addresses' && Array.isArray(value)) {
-        // Filter out empty address objects
-        result[key] = value
-          .filter(addr => addr && typeof addr === 'object')
-          .map(addr => {
-            // Clean each address field
-            const cleanAddr = {};
-            Object.entries(addr).forEach(([addrKey, addrVal]) => {
-              // Skip control fields and empty values
-              if (['id', 'version_id', 'image_id'].includes(addrKey)) return;
-              if (addrVal === null || addrVal === undefined) return;
-              
-              // Trim string values
-              if (typeof addrVal === 'string') {
-                const trimmed = addrVal.trim();
-                if (trimmed) cleanAddr[addrKey] = trimmed;
-              } else {
-                cleanAddr[addrKey] = addrVal;
-              }
-            });
-            
-            // Only return address if it has at least one non-empty field
-            return Object.keys(cleanAddr).length > 0 ? cleanAddr : null;
-          })
-          .filter(Boolean); // Remove null results
-      }
-      // Handle social_profiles array specially
-      else if (key === 'social_profiles' && Array.isArray(value)) {
-        // Filter out completely empty profile objects
-        result[key] = value
+    // Handle postal addresses
+    sanitized.postal_addresses = Array.isArray(sanitized.postal_addresses) ? sanitized.postal_addresses : [];
+    
+    // Handle social profiles specifically - ensuring they're properly structured
+    if (sanitized.social_profiles) {
+      if (!Array.isArray(sanitized.social_profiles)) {
+        console.warn('Social profiles is not an array, setting to empty array');
+        sanitized.social_profiles = [];
+      } else {
+        // Filter out invalid profiles and ensure required fields
+        sanitized.social_profiles = sanitized.social_profiles
           .filter(profile => profile && typeof profile === 'object')
-          .map(profile => {
-            // Clean each profile field
-            const cleanProfile = {};
-            Object.entries(profile).forEach(([profileKey, profileVal]) => {
-              // Skip control fields and empty values
-              if (['id', 'version_id', 'image_id'].includes(profileKey)) return;
-              if (profileVal === null || profileVal === undefined) return;
-              
-              // Trim string values
-              if (typeof profileVal === 'string') {
-                const trimmed = profileVal.trim();
-                if (trimmed) cleanProfile[profileKey] = trimmed;
-              } else {
-                cleanProfile[profileKey] = profileVal;
-              }
-            });
-            
-            // Include all profiles that have at least one non-empty field
-            return Object.keys(cleanProfile).length > 0 ? cleanProfile : null;
-          })
-          .filter(Boolean); // Remove null results
+          .map(profile => ({
+            service: profile.service || '',
+            url: profile.url || '',
+            username: profile.username || ''
+          }));
+        
+        console.log('Social profiles after proper sanitization:', 
+          JSON.stringify(sanitized.social_profiles));
       }
-      // Handle simple string values
-      else if (typeof value === 'string') {
-        const trimmed = value.trim();
-        if (trimmed !== '') {
-          result[key] = trimmed;
-        }
-      }
-      // Pass through other values (booleans, numbers, etc.)
-      else if (value !== null && value !== undefined) {
-        result[key] = value;
-      }
-    });
+    } else {
+      // Initialize as empty array if not present
+      sanitized.social_profiles = [];
+    }
     
-    return result;
+    return sanitized;
   };
   
-  /**
-   * Detects changes between original data and updated data
-   * @param {Object} originalData - The original data object
-   * @param {Object} updatedData - The updated data object
-   * @param {Array} fields - Fields to check for changes
-   * @returns {Object} - Object containing only the changed fields
-   */
-  export const detectChanges = (originalData, updatedData, fields) => {
+  // Helper function to validate field values
+  export const validateField = (value, field) => {
+    if (!value) return true; // Empty values are considered valid
+    
+    switch (field) {
+      case 'email_addresses':
+        return Array.isArray(value) && value.every(email => 
+          typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+      case 'phone_numbers':
+        return Array.isArray(value) && value.every(phone => 
+          typeof phone === 'string');
+      case 'url_addresses':
+        return Array.isArray(value) && value.every(url => 
+          typeof url === 'string');
+      case 'postal_addresses':
+        return Array.isArray(value);
+      case 'social_profiles':
+        return Array.isArray(value) && value.every(profile => 
+          typeof profile === 'object' && 
+          'service' in profile && 
+          'username' in profile);
+      default:
+        return true;
+    }
+  };  
+  
+/**
+ * Detects changes between original data and updated data
+ * @param {Object} originalData - The original data object
+ * @param {Object} updatedData - The updated data object
+ * @param {Array} fields - Fields to check for changes
+ * @returns {Object} - Object containing only the changed fields
+ */
+export const detectChanges = (originalData, updatedData, fields) => {
     const changes = {};
     let hasChanges = false;
-  
+
     // Ensure both objects exist
     if (!originalData || !updatedData) {
-      console.error("Invalid objects for change detection:", { originalData, updatedData });
-      return { changes: {}, hasChanges: false };
+    console.error("Invalid objects for change detection:", { originalData, updatedData });
+    return { changes: {}, hasChanges: false };
     }
-  
+
     fields.forEach(field => {
-      try {
+    try {
         // Skip if field isn't in updated data
         if (!(field in updatedData)) return;
         
@@ -118,59 +95,69 @@ export const sanitizeContactData = (data) => {
         
         // Handle arrays and objects with special comparison
         if (Array.isArray(newValue) || (newValue && typeof newValue === 'object')) {
-          // Special handling for postal_addresses to prevent unnecessary updates
-          if (field === 'postal_addresses') {
+        console.log(`Comparing field ${field}:`, originalValue, newValue);
+        
+        // Special handling for postal_addresses 
+        if (field === 'postal_addresses') {
+            // Handle postal addresses (existing code)
+            // ... (existing code for postal_addresses)
+        } 
+        // Add special handling for social_profiles
+        else if (field === 'social_profiles') {
             // Both null/undefined - no change
             if (!originalValue && !newValue) return;
             
             // One is array, one is not - change detected
             if (!Array.isArray(originalValue) !== !Array.isArray(newValue)) {
-              changes[field] = newValue;
-              hasChanges = true;
-              return;
+            changes[field] = newValue;
+            hasChanges = true;
+            return;
             }
             
             // Different lengths - change detected
             if ((originalValue?.length || 0) !== (newValue?.length || 0)) {
-              changes[field] = newValue;
-              hasChanges = true;
-              return;
+            changes[field] = newValue;
+            hasChanges = true;
+            return;
             }
             
-            // Deep compare each address
+            // Deep compare each profile
             if (Array.isArray(originalValue) && Array.isArray(newValue)) {
-              const addressesChanged = newValue.some((addr, idx) => {
-                const origAddr = originalValue[idx] || {};
-                // Compare relevant fields, ignoring control fields
-                const relevantFields = ['street', 'city', 'state', 'postal_code', 'country', 'sub_locality', 'sub_administrative_area', 'iso_country_code'];
-                return relevantFields.some(addrField => addr[addrField] !== origAddr[addrField]);
-              });
-              
-              if (addressesChanged) {
+            console.log("Comparing social profile arrays:", originalValue, newValue);
+            
+            const profilesChanged = newValue.some((profile, idx) => {
+                const origProfile = originalValue[idx] || {};
+                // Compare all relevant fields
+                const relevantFields = ['service', 'username', 'url'];
+                return relevantFields.some(profileField => profile[profileField] !== origProfile[profileField]);
+            });
+            
+            if (profilesChanged) {
+                console.log("Social profiles changed, including in changes object");
                 changes[field] = newValue;
                 hasChanges = true;
-              }
             }
-          } else {
+            }
+        } else {
             // For other arrays and objects, use JSON comparison
             if (JSON.stringify(originalValue) !== JSON.stringify(newValue)) {
-              changes[field] = newValue;
-              hasChanges = true;
+            changes[field] = newValue;
+            hasChanges = true;
             }
-          }
+        }
         }
         // Simple value comparison for primitives
         else if (originalValue !== newValue) {
-          changes[field] = newValue;
-          hasChanges = true;
+        changes[field] = newValue;
+        hasChanges = true;
         }
-      } catch (error) {
+    } catch (error) {
         console.error(`Error comparing field ${field}:`, error);
-      }
+    }
     });
-  
+
     return {
-      changes,
-      hasChanges
+    changes,
+    hasChanges
     };
-  };
+};

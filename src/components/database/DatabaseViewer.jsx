@@ -61,27 +61,83 @@ function DatabaseViewer() {
 
   // Handle field changes in edit mode
   const handleFieldChange = (versionId, updatedData) => {
-    setEditData(prev => ({
-      ...prev,
-      [versionId]: {
-        ...prev[versionId],
-        ...updatedData
+    console.log("Field change:", versionId, updatedData);
+    
+    setEditData(prev => {
+      // Make sure we're updating a copy of the previous state
+      const updatedState = { ...prev };
+      
+      // Make sure this version exists in the state
+      if (!updatedState[versionId]) {
+        updatedState[versionId] = {};
       }
-    }));
+      
+      // Special handling for arrays and objects (like social_profiles)
+      Object.entries(updatedData).forEach(([key, value]) => {
+        if (Array.isArray(value) || (value && typeof value === 'object')) {
+          // For arrays and objects, we need to ensure they're properly initialized
+          if (!updatedState[versionId][key]) {
+            if (Array.isArray(value)) {
+              updatedState[versionId][key] = [...value];
+            } else {
+              updatedState[versionId][key] = { ...value };
+            }
+          } else {
+            // If the field already exists, update it properly
+            if (Array.isArray(value)) {
+              updatedState[versionId][key] = [...value];
+            } else {
+              updatedState[versionId][key] = { ...value };
+            }
+          }
+        } else {
+          // Simple value assignment for primitives
+          updatedState[versionId][key] = value;
+        }
+      });
+      
+      console.log("Updated edit data:", updatedState);
+      return updatedState;
+    });
   };
+  
 
   // Handle saving changes
   const handleSaveChanges = async () => {
     let successCount = 0;
     let failCount = 0;
     
+    console.log("Starting save process with editData:", editData);
+    
     for (const [versionId, data] of Object.entries(editData)) {
       try {
+        console.log(`Preparing to update version ${versionId} with data:`, data);
+        
+        // Check for social profiles before sanitization
+        if (data.social_profiles) {
+          console.log(`Social profiles before sanitization:`, data.social_profiles);
+        } else {
+          console.log(`No social profiles in version ${versionId} data`);
+        }
+        
         // Use the simplified sanitization function
         const sanitizedData = sanitizeContactData(data);
         
+        // Log the sanitized data for debugging
+        console.log(`Sanitized data for version ${versionId}:`, sanitizedData);
+        
+        // Check for social profiles after sanitization
+        if (sanitizedData.social_profiles) {
+          console.log(`Social profiles after sanitization:`, sanitizedData.social_profiles);
+        } else {
+          console.log(`Social profiles missing after sanitization for version ${versionId}`);
+        }
+        
         // Send sanitized data to the server
+        console.log(`Sending update for version ${versionId}`);
         await updateVersion(parseInt(versionId), sanitizedData);
+        
+        console.log(`Successfully updated version ${versionId}`);
         successCount++;
       } catch (error) {
         console.error(`Failed to update version ${versionId}:`, error);
@@ -91,7 +147,7 @@ function DatabaseViewer() {
     
     alert(`Updates: ${successCount} succeeded, ${failCount} failed`);
     setEditMode(false);
-  };
+  };  
   
   // Handle image deletion
   const handleDelete = async (imageId) => {
