@@ -19,13 +19,6 @@ export const sanitizeContactData = (data) => {
           .filter(item => item !== '');
           
         // For email addresses, do basic validation
-        // if (key === 'email_addresses') {
-        //   result[key] = cleanArray.filter(email => 
-        //     typeof email === 'string' && email.includes('@') && email.includes('.')
-        //   );
-        // } else {
-        //   result[key] = cleanArray;
-        // }
         result[key] = cleanArray;
       }
       // Handle postal_addresses array specially
@@ -52,6 +45,33 @@ export const sanitizeContactData = (data) => {
             
             // Only return address if it has at least one non-empty field
             return Object.keys(cleanAddr).length > 0 ? cleanAddr : null;
+          })
+          .filter(Boolean); // Remove null results
+      }
+      // Handle social_profiles array specially
+      else if (key === 'social_profiles' && Array.isArray(value)) {
+        // Filter out completely empty profile objects
+        result[key] = value
+          .filter(profile => profile && typeof profile === 'object')
+          .map(profile => {
+            // Clean each profile field
+            const cleanProfile = {};
+            Object.entries(profile).forEach(([profileKey, profileVal]) => {
+              // Skip control fields and empty values
+              if (['id', 'version_id', 'image_id'].includes(profileKey)) return;
+              if (profileVal === null || profileVal === undefined) return;
+              
+              // Trim string values
+              if (typeof profileVal === 'string') {
+                const trimmed = profileVal.trim();
+                if (trimmed) cleanProfile[profileKey] = trimmed;
+              } else {
+                cleanProfile[profileKey] = profileVal;
+              }
+            });
+            
+            // Include all profiles that have at least one non-empty field
+            return Object.keys(cleanProfile).length > 0 ? cleanProfile : null;
           })
           .filter(Boolean); // Remove null results
       }

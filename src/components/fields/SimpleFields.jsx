@@ -1,4 +1,5 @@
 import React from 'react';
+import { SocialProfilesField } from './SocialProfilesField';
 
 // Simple text field that works in both views
 export const TextField = ({ label, value, onChange, disabled }) => (
@@ -161,76 +162,87 @@ export const AddressField = ({ addresses, onChange, disabled, label }) => {
 
 // A reusable group of fields that can be used in both views
 export const VersionFields = ({ data, onChange, disabled, fieldFilter }) => {
-  // Define all the fields with their groups
-  const allFields = {
-    name: [
-      { id: 'name_prefix', label: 'Prefix', type: 'text' },
-      { id: 'given_name', label: 'Given Name', type: 'text' },
-      { id: 'middle_name', label: 'Middle Name', type: 'text' },
-      { id: 'family_name', label: 'Family Name', type: 'text' },
-      { id: 'name_suffix', label: 'Suffix', type: 'text' },
-    ],
-    work: [
-      { id: 'job_title', label: 'Job Title', type: 'text' },
-      { id: 'department', label: 'Department', type: 'text' },
-      { id: 'organization_name', label: 'Organization', type: 'text' },
-    ],
-    contact: [
-      { id: 'phone_numbers', label: 'Phone Numbers', type: 'array' },
-      { id: 'email_addresses', label: 'Email Addresses', type: 'array' },
-      { id: 'url_addresses', label: 'URLs', type: 'array' },
-    ],
-    address: [
-      { id: 'postal_addresses', label: 'Postal Addresses', type: 'address' },
-    ]
+    // Define all the fields with their groups
+    const allFields = {
+      name: [
+        { id: 'name_prefix', label: 'Prefix', type: 'text' },
+        { id: 'given_name', label: 'Given Name', type: 'text' },
+        { id: 'middle_name', label: 'Middle Name', type: 'text' },
+        { id: 'family_name', label: 'Family Name', type: 'text' },
+        { id: 'name_suffix', label: 'Suffix', type: 'text' },
+      ],
+      work: [
+        { id: 'job_title', label: 'Job Title', type: 'text' },
+        { id: 'department', label: 'Department', type: 'text' },
+        { id: 'organization_name', label: 'Organization', type: 'text' },
+      ],
+      contact: [
+        { id: 'phone_numbers', label: 'Phone Numbers', type: 'array' },
+        { id: 'email_addresses', label: 'Email Addresses', type: 'array' },
+        { id: 'url_addresses', label: 'URLs', type: 'array' },
+        { id: 'social_profiles', label: 'Social Profiles', type: 'social' },
+      ],
+      address: [
+        { id: 'postal_addresses', label: 'Postal Addresses', type: 'address' },
+      ]
+    };
+    
+    // Filter fields if specified
+    const fieldsToRender = fieldFilter 
+      ? Object.entries(allFields).flatMap(([_, fields]) => 
+          fields.filter(field => fieldFilter.includes(field.id))
+        )
+      : Object.values(allFields).flat();
+    
+    // Handle changes for any field
+    const handleFieldChange = (field, value) => {
+      if (onChange) {
+        onChange({ ...data, [field]: value });
+      }
+    };
+    
+    return (
+      <div className="space-y-4">
+        {fieldsToRender.map(field => (
+          <div key={field.id}>
+            {field.type === 'text' && (
+              <TextField
+                label={field.label}
+                value={data?.[field.id]}
+                onChange={(value) => handleFieldChange(field.id, value)}
+                disabled={disabled}
+              />
+            )}
+            
+            {field.type === 'array' && (
+              <ArrayField
+                label={field.label}
+                values={data?.[field.id]}
+                onChange={(value) => handleFieldChange(field.id, value)}
+                disabled={disabled}
+              />
+            )}
+            
+            {field.type === 'address' && (
+              <AddressField
+                label={field.label}
+                addresses={data?.[field.id]}
+                onChange={(value) => handleFieldChange(field.id, value)}
+                disabled={disabled}
+              />
+            )}
+            
+            {field.type === 'social' && (
+              <SocialProfilesField
+                label={field.label}
+                profiles={data?.[field.id] || []}
+                onChange={(value) => handleFieldChange(field.id, value)}
+                disabled={disabled}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    );
   };
   
-  // Filter fields if specified
-  const fieldsToRender = fieldFilter 
-    ? Object.entries(allFields).flatMap(([_, fields]) => 
-        fields.filter(field => fieldFilter.includes(field.id))
-      )
-    : Object.values(allFields).flat();
-  
-  // Handle changes for any field
-  const handleFieldChange = (field, value) => {
-    if (onChange) {
-      onChange({ ...data, [field]: value });
-    }
-  };
-  
-  return (
-    <div className="space-y-4">
-      {fieldsToRender.map(field => (
-        <div key={field.id}>
-          {field.type === 'text' && (
-            <TextField
-              label={field.label}
-              value={data?.[field.id]}
-              onChange={(value) => handleFieldChange(field.id, value)}
-              disabled={disabled}
-            />
-          )}
-          
-          {field.type === 'array' && (
-            <ArrayField
-              label={field.label}
-              values={data?.[field.id]}
-              onChange={(value) => handleFieldChange(field.id, value)}
-              disabled={disabled}
-            />
-          )}
-          
-          {field.type === 'address' && (
-            <AddressField
-              label={field.label}
-              addresses={data?.[field.id]}
-              onChange={(value) => handleFieldChange(field.id, value)}
-              disabled={disabled}
-            />
-          )}
-        </div>
-      ))}
-    </div>
-  );
-};
