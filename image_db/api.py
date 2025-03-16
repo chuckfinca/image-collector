@@ -82,6 +82,10 @@ async def get_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/images")
+# In api.py, find the get_images function and modify the section that 
+# generates thumbnails to use the file_path instead of image_data
+
+@router.get("/images")
 async def get_images():
     global image_db
     logger.info("Fetching images from database")
@@ -114,22 +118,23 @@ async def get_images():
                 # Convert row to dictionary
                 image_dict = dict(row)
                 
-                # Generate a thumbnail URL for display
-                # This could be a separate endpoint that creates thumbnails on-demand
-                # or we could use the original for both the thumbnail and full view
-                image_dict['thumbnail'] = f"/api/original/{image_id}"
-                
                 logger.info(f"Processing image ID: {image_id}")
                 
-                # Remove binary data early
-                image_data = image_dict.pop('image_data')
-                
-                # Create thumbnail with better error handling
+                # Generate thumbnail from file
                 thumbnail = None
-                if image_data:
+                file_path = image_dict.get('file_path')
+                
+                if file_path:
                     try:
-                        # Check if we have valid image data
-                        if len(image_data) > 0:
+                        # Construct the absolute path to the image file
+                        abs_path = os.path.join(image_db.image_dir, file_path)
+                        
+                        if os.path.exists(abs_path):
+                            # Read the file
+                            with open(abs_path, 'rb') as f:
+                                image_data = f.read()
+                            
+                            # Create thumbnail
                             img_buffer = BytesIO(image_data)
                             img = Image.open(img_buffer)
                             
@@ -141,6 +146,8 @@ async def get_images():
                             thumbnail_data = thumb_buffer.getvalue()
                             thumbnail = f"data:image/{save_format.lower()};base64,{base64.b64encode(thumbnail_data).decode()}"
                             logger.info(f"Generated thumbnail for image {image_id}")
+                        else:
+                            logger.warning(f"Image file not found at {abs_path}")
                     except Exception as e:
                         logger.error(f"Thumbnail creation error for image {image_id}: {e}")
                         # Continue without thumbnail
@@ -171,31 +178,17 @@ async def get_images():
                     'social_profiles': social_profiles
                 })
                 
-                # Add to images list - ALWAYS include the image even without thumbnail
+                # Add to images list
                 images.append(image_dict)
                 logger.info(f"Added image {image_id} to response")
+            
+            logger.info(f"Returning {len(images)} images")
+            return {"images": images}
                 
-    except Exception as e:
-        logger.error(f"Error processing image {image_id}: {e}")
-        # Try to include minimal information
-        try:
-            minimal_image = {
-                'id': row['id'],
-                'date_added': row['date_added'] if 'date_added' in row else None,
-                'error': str(e)
-            }
-            images.append(minimal_image)
-            logger.info(f"Added minimal info for image {image_id}")
-        except:
-            logger.error(f"Failed to add even minimal info for an image")
-
-        logger.info(f"Returning {len(images)} images")
-        return {"images": images or []} 
-    
     except Exception as e:
         logger.error(f"Error fetching images: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    
+
 @router.put("/update/{image_id}")
 async def update_image_data(image_id: int, update_data: ImageUpdate):
     if not image_db:
@@ -242,25 +235,36 @@ async def get_full_image(image_id: int):
     if not image_db:
         raise HTTPException(status_code=400, detail="Database not initialized")
     
-    with sqlite3.connect(image_db.db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT image_data FROM images WHERE id = ?", (image_id,))
-        result = cursor.fetchone()
-        
-        if not result:
-            raise HTTPException(status_code=404, detail="Image not found")
-        
-        image_data = result[0]
-        if image_data:
-            try:
-                # Convert to base64
-                image_base64 = base64.b64encode(image_data).decode('utf-8')
-                return {"image_data": image_base64}
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
-        else:
-            raise HTTPException(status_code=404, detail="Image data not found")
-        
+    try:
+        with sqlite3.connect(image_db.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT file_path FROM images WHERE id = ?", (image_id,))
+            result = cursor.fetchone()
+            
+            if not result or not result[0]:
+                raise HTTPException(status_code=404, detail="Image not found")
+            
+            # Get the file path relative to the image directory
+            rel_path = result[0]
+            abs_path = os.path.join(image_db.image_dir, rel_path)
+            
+            if not os.path.exists(abs_path):
+                raise HTTPException(status_code=404, detail="Image file not found on disk")
+            
+            # Read the file and convert to base64
+            with open(abs_path, 'rb') as f:
+                image_data = f.read()
+            
+            # Convert to base64
+            image_base64 = base64.b64encode(image_data).decode('utf-8')
+            return {"image_data": image_base64}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error serving full image: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+       
 @router.post("/upload/file")
 async def upload_image_file(file: UploadFile = File(...)):
     if not image_db:

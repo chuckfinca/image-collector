@@ -283,19 +283,31 @@ class ImageDatabase:
                     # Get the new image ID
                     image_id = cursor.lastrowid
                     
-                    # Insert related data (phones, emails, etc.)
-                    # (Existing code for related data remains unchanged)
+                    # COMMIT TRANSACTION EXPLICITLY
+                    conn.commit()
+                    
+                    logger.info(f"Inserted image into database with ID: {image_id}")
+                    
+                    # Verify the image entry was created
+                    cursor.execute("SELECT id FROM images WHERE id = ?", (image_id,))
+                    if not cursor.fetchone():
+                        logger.error(f"Failed to verify image ID {image_id} after insert")
+                        return False
                     
                     # Create initial version
-                    version_id = await self.create_version(
-                        image_id=image_id,
-                        tag="original",
-                        notes="Initial version",
-                        create_blank=False
-                    )
-                    
-                    return True
-                    
+                    try:
+                        version_id = await self.create_version(
+                            image_id=image_id,
+                            tag="original",
+                            notes="Initial version",
+                            create_blank=False
+                        )
+                        logger.info(f"Created initial version {version_id} for image {image_id}")
+                        return True
+                    except Exception as version_error:
+                        logger.error(f"Error creating version: {version_error}")
+                        # Don't return False here, since the image was saved successfully
+                        return True
                 except Exception as e:
                     logger.error(f"Error saving image: {e}", exc_info=True)
                     # Try to clean up file if database insert failed
