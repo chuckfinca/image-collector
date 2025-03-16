@@ -67,6 +67,13 @@ const VersionSelector = ({ imageId, onVersionChange }) => {
     return <div className="text-text-muted text-sm">Loading versions...</div>;
   }
   
+  // Get active version details
+  const activeVersion = imageVersions.find(v => v.id === activeVersionId) || imageVersions[0];
+  const isAiExtracted = activeVersion && (
+    activeVersion.tag?.startsWith('extracted_') || 
+    activeVersion.model_id
+  );
+  
   return (
     <div className="space-y-3 p-2 border border-border rounded bg-background-alt/50">
       <h3 className="text-sm font-medium">Version</h3>
@@ -77,12 +84,31 @@ const VersionSelector = ({ imageId, onVersionChange }) => {
         onChange={onSelectVersion}
         className="w-full px-2 py-1 bg-background-alt border border-border rounded text-sm"
       >
-        {imageVersions.map(version => (
-          <option key={version.id} value={version.id}>
-            {version.tag} ({new Date(version.created_at).toLocaleDateString()})
-          </option>
-        ))}
+        {imageVersions.map(version => {
+          const hasMetadata = version.model_id;
+          const modelInfo = hasMetadata ? `[${version.model_id}]` : '';
+          
+          return (
+            <option key={version.id} value={version.id}>
+              {version.tag} {modelInfo} ({new Date(version.created_at).toLocaleDateString()})
+            </option>
+          );
+        })}
       </select>
+      
+      {/* Display AI extraction metadata if present */}
+      {isAiExtracted && activeVersion.model_id && (
+        <div className="p-2 text-xs bg-background-subtle/50 rounded border border-border-subtle">
+          <div className="font-medium text-primary">Extraction Details</div>
+          <div>Model: <span className="font-medium">{activeVersion.model_id}</span></div>
+          {activeVersion.program_name && (
+            <div>Extractor: {activeVersion.program_name} v{activeVersion.program_version}</div>
+          )}
+          {activeVersion.extracted_at && (
+            <div>Extracted: {new Date(activeVersion.extracted_at).toLocaleString()}</div>
+          )}
+        </div>
+      )}
       
       {/* Version actions */}
       <div className="flex space-x-2">
@@ -112,7 +138,7 @@ const VersionSelector = ({ imageId, onVersionChange }) => {
               type="text"
               value={newVersionTag}
               onChange={(e) => setNewVersionTag(e.target.value)}
-              placeholder="e.g., extracted, edited"
+              placeholder="e.g., edited, reviewed"
               className="w-full px-2 py-1 bg-background-alt border border-border rounded text-sm"
               required
             />

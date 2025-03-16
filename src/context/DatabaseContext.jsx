@@ -46,6 +46,13 @@ export const DatabaseProvider = ({ children }) => {
       const response = await api.fetchImages();
       console.log("Fetch images response:", response);
       
+      // Check if response is null or undefined first
+      if (!response) {
+        console.warn("Received null response from API");
+        setImages([]);
+        return;
+      }
+      
       if (response?.images) {
         console.log(`Received ${response.images.length} images from database`);
         setImages(response.images);
@@ -81,16 +88,28 @@ export const DatabaseProvider = ({ children }) => {
       localStorage.setItem('imageDatabasePath', dbPath);
       setIsConnected(true);
       
-      // Fetch initial data
-      const imagesResponse = await api.fetchImages();
-      setImages(imagesResponse.images || []);
+      // Fetch initial data - add null check here
+      try {
+        const imagesResponse = await api.fetchImages();
+        // Safely handle potential null response
+        if (imagesResponse && imagesResponse.images) {
+          setImages(imagesResponse.images || []);
+        } else {
+          console.warn("Empty or invalid response when fetching images");
+          setImages([]);
+        }
+      } catch (fetchError) {
+        console.error("Error fetching initial images:", fetchError);
+        setImages([]);
+        // Don't fail the whole connection for this
+      }
     } catch (error) {
       handleError(error, 'connect');
       setIsConnected(false);
     } finally {
       setLoading(false);
     }
-  }, [dbPath, handleError]);
+  }, [dbPath, handleError]);  
 
   const disconnect = useCallback(() => {
     localStorage.removeItem('imageDatabasePath');

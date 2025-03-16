@@ -6,6 +6,7 @@ import ImageViewModal from '../image/ImageViewModal';
 import VersionPivotTable from '../version/VersionPivotTable';
 import { sanitizeContactData } from '../../utils/data-sanitization';
 
+
 function DatabaseViewer() {
   const { 
     images,
@@ -21,9 +22,10 @@ function DatabaseViewer() {
 
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState({});
-  const [selectedImageUrl, setSelectedImageUrl] = useState(null);
+  const [selectedImageId, setSelectedImageId] = useState(null);
   const [showPivotTable, setShowPivotTable] = useState(false);
   const [selectedImageForPivot, setSelectedImageForPivot] = useState(null);
+
 
   // Initialize edit data when entering edit mode
   useEffect(() => {
@@ -172,8 +174,8 @@ function DatabaseViewer() {
   };
 
   // Show image preview
-  const handleImageClick = (thumbnail) => {
-    setSelectedImageUrl(thumbnail);
+  const handleImageClick = (imageId) => {
+    setSelectedImageId(imageId);
   };
 
   // Show loading if no images
@@ -188,8 +190,8 @@ function DatabaseViewer() {
   return (
     <div className="space-y-4">
       <ImageViewModal 
-        imageUrl={selectedImageUrl} 
-        onClose={() => setSelectedImageUrl(null)}
+        imageId={selectedImageId} 
+        onClose={() => setSelectedImageId(null)}
       />
       
       <div className="flex justify-between items-center">
@@ -227,7 +229,7 @@ function DatabaseViewer() {
                 {/* Left side - Image thumbnail with delete button positioned over it */}
                 <div 
                   className="w-40 h-32 bg-background-alt rounded flex items-center justify-center cursor-pointer mr-4 relative"
-                  onClick={() => handleImageClick(image.thumbnail)}
+                  onClick={() => handleImageClick(image.id)}
                 >
                   {/* Super simple text-based delete button */}
                   <button

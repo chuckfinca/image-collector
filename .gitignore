@@ -102,6 +102,7 @@ dist-ssr
 *.db
 current_db_path.txt
 image_db/current_db_path.txt
+images/
 
 # Tree command output
 tree

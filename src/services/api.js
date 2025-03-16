@@ -17,6 +17,11 @@ export const api = {
     return handleResponse(response);
   },
 
+  getFullImage: async (imageId) => {
+    const response = await fetch(`${API_BASE_URL}/image/${imageId}`);
+    return handleResponse(response);
+  },
+
   uploadImageUrl: async (url) => {
     const formData = new FormData();
     formData.append('url', url);
