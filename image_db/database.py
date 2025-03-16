@@ -1090,11 +1090,13 @@ class ImageDatabase:
             
             # Prepare the request body
             request_body = {
-                "pipeline_id": "extract-contact",
-                "content": base64_image,
-                "media_type": "image",
-                "params": {
-                    "model_id": "gpt-4o-mini"
+                "request": {    
+                    "pipeline_id": "extract-contact",
+                    "content": base64_image,
+                    "media_type": "image",
+                    "params": {
+                        "model_id": "gpt-4o-mini"
+                    }
                 }
             }
             
