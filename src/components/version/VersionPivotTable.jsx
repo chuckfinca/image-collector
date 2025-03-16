@@ -13,8 +13,11 @@ function VersionPivotTable({ imageId, onClose }) {
   const [selectedFields, setSelectedFields] = useState([
     'given_name', 'family_name', 'organization_name', 
     'phone_numbers', 'email_addresses', 'postal_addresses',
-    'social_profiles'  // Added social_profiles to default selected fields
+    'social_profiles'
   ]);
+  
+  // Add state for showing metadata
+  const [showMetadata, setShowMetadata] = useState(true);
   
   // Use the shared version management hook
   const {
@@ -51,6 +54,12 @@ function VersionPivotTable({ imageId, onClose }) {
     ],
     'Address Information': [
       { id: 'postal_addresses', label: 'Postal Addresses', isComplex: true }
+    ],
+    'Extraction Metadata': [
+      { id: 'model_id', label: 'Model ID', isMetadata: true },
+      { id: 'program_name', label: 'Extractor Program', isMetadata: true },
+      { id: 'program_version', label: 'Extractor Version', isMetadata: true },
+      { id: 'extracted_at', label: 'Extraction Date', isMetadata: true }
     ]
   };
   
@@ -147,6 +156,16 @@ function VersionPivotTable({ imageId, onClose }) {
     }
   };
   
+  // Format date for display
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      return new Date(dateStr).toLocaleString();
+    } catch (e) {
+      return dateStr;
+    }
+  };
+  
   // Render field value based on its type
   const renderFieldValue = (version, field, isEditing = false) => {
     // Get effective data (either from edit state or version object)
@@ -156,6 +175,14 @@ function VersionPivotTable({ imageId, onClose }) {
       .find(f => f.id === field);
     
     if (!fieldDef) return null;
+    
+    // Handle metadata fields differently
+    if (fieldDef.isMetadata) {
+      if (field === 'extracted_at') {
+        return <div>{formatDate(effectiveData[field])}</div>;
+      }
+      return <div>{effectiveData[field] || '-'}</div>;
+    }
     
     // Handle field based on its type
     if (field === 'postal_addresses') {
@@ -206,6 +233,12 @@ function VersionPivotTable({ imageId, onClose }) {
       </div>
     );
   }
+
+  // Filter selected fields based on metadata toggle
+  const filteredFields = selectedFields.filter(field => {
+    const fieldDef = Object.values(fieldGroups).flat().find(f => f.id === field);
+    return showMetadata || !(fieldDef && fieldDef.isMetadata);
+  });
 
   return (
     <div className="p-4">
@@ -288,26 +321,49 @@ function VersionPivotTable({ imageId, onClose }) {
         </div>
       </div>
       
-      {/* Field Selector */}
+      {/* Field Selector and Metadata Toggle */}
       <div className="mb-4 p-4 border border-border rounded bg-background-alt">
-        <h3 className="text-sm font-medium mb-2">Select Fields to Compare:</h3>
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="text-sm font-medium">Select Fields to Compare:</h3>
+          
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="show-metadata"
+              checked={showMetadata}
+              onChange={() => setShowMetadata(!showMetadata)}
+              className="mr-2"
+            />
+            <label htmlFor="show-metadata" className="text-sm">
+              Show AI Metadata
+            </label>
+          </div>
+        </div>
+        
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {Object.entries(fieldGroups).map(([groupName, fields]) => (
-            <div key={groupName} className="space-y-1">
-              <h4 className="text-xs font-medium text-text-muted">{groupName}</h4>
-              {fields.map(field => (
-                <label key={field.id} className="flex items-center text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedFields.includes(field.id)}
-                    onChange={() => toggleField(field.id)}
-                    className="mr-2"
-                  />
-                  {field.label}
-                </label>
-              ))}
-            </div>
-          ))}
+          {Object.entries(fieldGroups).map(([groupName, fields]) => {
+            // Skip metadata section if toggle is off
+            if (!showMetadata && groupName === 'Extraction Metadata') {
+              return null;
+            }
+            
+            return (
+              <div key={groupName} className="space-y-1">
+                <h4 className="text-xs font-medium text-text-muted">{groupName}</h4>
+                {fields.map(field => (
+                  <label key={field.id} className="flex items-center text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedFields.includes(field.id)}
+                      onChange={() => toggleField(field.id)}
+                      className="mr-2"
+                    />
+                    {field.label}
+                  </label>
+                ))}
+              </div>
+            );
+          })}
         </div>
       </div>
       
@@ -328,6 +384,12 @@ function VersionPivotTable({ imageId, onClose }) {
                       <div className="text-xs text-text-muted">
                         {new Date(version.created_at).toLocaleString()}
                       </div>
+                      {/* Show AI model badge if available */}
+                      {version.model_id && (
+                        <div className="mt-1 text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded-full inline-block">
+                          {version.model_id}
+                        </div>
+                      )}
                     </div>
                     {!editMode && imageVersions.length > 1 && (
                       <button
@@ -347,16 +409,20 @@ function VersionPivotTable({ imageId, onClose }) {
           </thead>
           <tbody>
             {/* Render a row for each selected field */}
-            {selectedFields.map(fieldId => {
+            {filteredFields.map(fieldId => {
               // Find field label
               let fieldLabel = '';
+              let isMetadata = false;
               Object.values(fieldGroups).forEach(group => {
                 const field = group.find(f => f.id === fieldId);
-                if (field) fieldLabel = field.label;
+                if (field) {
+                  fieldLabel = field.label;
+                  isMetadata = !!field.isMetadata;
+                }
               });
               
               return (
-                <tr key={fieldId} className="hover:bg-background-alt/50">
+                <tr key={fieldId} className={`hover:bg-background-alt/50 ${isMetadata ? 'bg-primary/5' : ''}`}>
                   <td className="p-3 font-medium border-r border-b border-border">
                     {fieldLabel}
                   </td>
