@@ -99,7 +99,7 @@ const VersionSelector = ({ imageId, onVersionChange }) => {
       {/* Display AI extraction metadata if present */}
       {isAiExtracted && activeVersion.model_id && (
         <div className="p-2 text-xs bg-background-subtle/50 rounded border border-border-subtle">
-          <div className="font-medium text-primary">AI Extraction Details</div>
+          <div className="font-medium text-primary">Extraction Details</div>
           <div>Model: <span className="font-medium">{activeVersion.model_id}</span></div>
           {activeVersion.program_name && (
             <div>Extractor: {activeVersion.program_name} v{activeVersion.program_version}</div>

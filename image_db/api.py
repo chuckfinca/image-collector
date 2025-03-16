@@ -87,106 +87,110 @@ async def get_images():
     logger.info("Fetching images from database")
     
     if not image_db:
-        # Try to recover the database connection
         image_db = get_image_db()
     
     if not image_db:
         raise HTTPException(status_code=400, detail="Database not initialized")
-    
-    logger.info(f"Using database at path: {image_db.db_path}")
     
     try:
         with sqlite3.connect(image_db.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
-            # Get main image data
+            # Get main image data - no more handling large image blobs
             cursor.execute("""
-                SELECT * FROM images 
+                SELECT id, filename, file_path, hash, date_added,
+                       name_prefix, given_name, middle_name, family_name, name_suffix,
+                       job_title, department, organization_name 
+                FROM images 
                 ORDER BY date_added DESC
             """)
             rows = cursor.fetchall()
-            logger.info(f"Found {len(rows)} images in database")
-
+            
             images = []
             for row in rows:
-                try:
-                    image_id = row['id']
-                    logger.info(f"Processing image ID: {image_id}")
-                    
-                    # Create a copy of the row data
-                    image_dict = dict(row)
-                    
-                    # Remove binary data early
-                    image_data = image_dict.pop('image_data')
-                    
-                    # Create thumbnail with better error handling
-                    thumbnail = None
-                    if image_data:
-                        try:
-                            # Check if we have valid image data
-                            if len(image_data) > 0:
-                                img_buffer = BytesIO(image_data)
-                                img = Image.open(img_buffer)
-                                
-                                # Create thumbnail
-                                img.thumbnail((200, 200))
-                                thumb_buffer = BytesIO()
-                                save_format = img.format if img.format else 'JPEG'
-                                img.save(thumb_buffer, format=save_format)
-                                thumbnail_data = thumb_buffer.getvalue()
-                                thumbnail = f"data:image/{save_format.lower()};base64,{base64.b64encode(thumbnail_data).decode()}"
-                                logger.info(f"Generated thumbnail for image {image_id}")
-                        except Exception as e:
-                            logger.error(f"Thumbnail creation error for image {image_id}: {e}")
-                            # Continue without thumbnail
-                    
-                    # Get related data
-                    cursor.execute("SELECT phone_number FROM phone_numbers WHERE image_id = ?", (image_id,))
-                    phone_numbers = [r[0] for r in cursor.fetchall()]
-                    
-                    cursor.execute("SELECT email_address FROM email_addresses WHERE image_id = ?", (image_id,))
-                    email_addresses = [r[0] for r in cursor.fetchall()]
-                    
-                    cursor.execute("SELECT * FROM postal_addresses WHERE image_id = ?", (image_id,))
-                    postal_addresses = [dict(r) for r in cursor.fetchall()]
-                    
-                    cursor.execute("SELECT url FROM url_addresses WHERE image_id = ?", (image_id,))
-                    url_addresses = [r[0] for r in cursor.fetchall()]
-                    
-                    cursor.execute("SELECT service, url, username FROM social_profiles WHERE image_id = ?", (image_id,))
-                    social_profiles = [dict(zip(['service', 'url', 'username'], r)) for r in cursor.fetchall()]
-
-                    # Update the image dict with all data
-                    image_dict.update({
-                        'thumbnail': thumbnail,
-                        'phone_numbers': phone_numbers,
-                        'email_addresses': email_addresses,
-                        'postal_addresses': postal_addresses,
-                        'url_addresses': url_addresses,
-                        'social_profiles': social_profiles
-                    })
-                    
-                    # Add to images list - ALWAYS include the image even without thumbnail
-                    images.append(image_dict)
-                    logger.info(f"Added image {image_id} to response")
-                    
-                except Exception as e:
-                    logger.error(f"Error processing image {image_id}: {e}")
-                    # Try to include minimal information
+                image_id = row['id']
+                
+                # Convert row to dictionary
+                image_dict = dict(row)
+                
+                # Generate a thumbnail URL for display
+                # This could be a separate endpoint that creates thumbnails on-demand
+                # or we could use the original for both the thumbnail and full view
+                image_dict['thumbnail'] = f"/api/original/{image_id}"
+                
+                logger.info(f"Processing image ID: {image_id}")
+                
+                # Remove binary data early
+                image_data = image_dict.pop('image_data')
+                
+                # Create thumbnail with better error handling
+                thumbnail = None
+                if image_data:
                     try:
-                        minimal_image = {
-                            'id': row['id'],
-                            'date_added': row['date_added'] if 'date_added' in row else None,
-                            'error': str(e)
-                        }
-                        images.append(minimal_image)
-                        logger.info(f"Added minimal info for image {image_id}")
-                    except:
-                        logger.error(f"Failed to add even minimal info for an image")
+                        # Check if we have valid image data
+                        if len(image_data) > 0:
+                            img_buffer = BytesIO(image_data)
+                            img = Image.open(img_buffer)
+                            
+                            # Create thumbnail
+                            img.thumbnail((200, 200))
+                            thumb_buffer = BytesIO()
+                            save_format = img.format if img.format else 'JPEG'
+                            img.save(thumb_buffer, format=save_format)
+                            thumbnail_data = thumb_buffer.getvalue()
+                            thumbnail = f"data:image/{save_format.lower()};base64,{base64.b64encode(thumbnail_data).decode()}"
+                            logger.info(f"Generated thumbnail for image {image_id}")
+                    except Exception as e:
+                        logger.error(f"Thumbnail creation error for image {image_id}: {e}")
+                        # Continue without thumbnail
+                
+                # Get related data
+                cursor.execute("SELECT phone_number FROM phone_numbers WHERE image_id = ?", (image_id,))
+                phone_numbers = [r[0] for r in cursor.fetchall()]
+                
+                cursor.execute("SELECT email_address FROM email_addresses WHERE image_id = ?", (image_id,))
+                email_addresses = [r[0] for r in cursor.fetchall()]
+                
+                cursor.execute("SELECT * FROM postal_addresses WHERE image_id = ?", (image_id,))
+                postal_addresses = [dict(r) for r in cursor.fetchall()]
+                
+                cursor.execute("SELECT url FROM url_addresses WHERE image_id = ?", (image_id,))
+                url_addresses = [r[0] for r in cursor.fetchall()]
+                
+                cursor.execute("SELECT service, url, username FROM social_profiles WHERE image_id = ?", (image_id,))
+                social_profiles = [dict(zip(['service', 'url', 'username'], r)) for r in cursor.fetchall()]
 
-            logger.info(f"Returning {len(images)} images")
-            return {"images": images}
+                # Update the image dict with all data
+                image_dict.update({
+                    'thumbnail': thumbnail,
+                    'phone_numbers': phone_numbers,
+                    'email_addresses': email_addresses,
+                    'postal_addresses': postal_addresses,
+                    'url_addresses': url_addresses,
+                    'social_profiles': social_profiles
+                })
+                
+                # Add to images list - ALWAYS include the image even without thumbnail
+                images.append(image_dict)
+                logger.info(f"Added image {image_id} to response")
+                
+    except Exception as e:
+        logger.error(f"Error processing image {image_id}: {e}")
+        # Try to include minimal information
+        try:
+            minimal_image = {
+                'id': row['id'],
+                'date_added': row['date_added'] if 'date_added' in row else None,
+                'error': str(e)
+            }
+            images.append(minimal_image)
+            logger.info(f"Added minimal info for image {image_id}")
+        except:
+            logger.error(f"Failed to add even minimal info for an image")
+
+        logger.info(f"Returning {len(images)} images")
+        return {"images": images or []} 
     
     except Exception as e:
         logger.error(f"Error fetching images: {e}", exc_info=True)
@@ -460,3 +464,42 @@ async def delete_version(version_id: int, image_db: ImageDatabase = Depends(get_
     
     result = image_db.delete_version(version_id)
     return handle_result(result, "Version deleted successfully")
+
+@router.get("/original/{image_id}")
+async def get_original_image(image_id: int):
+    """Serve the original image file from disk."""
+    if not image_db:
+        raise HTTPException(status_code=400, detail="Database not initialized")
+    
+    try:
+        with sqlite3.connect(image_db.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT file_path FROM images WHERE id = ?", (image_id,))
+            result = cursor.fetchone()
+            
+            if not result or not result[0]:
+                raise HTTPException(status_code=404, detail="Image not found")
+            
+            # Get the file path relative to the image directory
+            rel_path = result[0]
+            abs_path = os.path.join(image_db.image_dir, rel_path)
+            
+            if not os.path.exists(abs_path):
+                raise HTTPException(status_code=404, detail="Image file not found on disk")
+            
+            # Determine the file type from extension
+            ext = os.path.splitext(abs_path)[1].lower().lstrip('.')
+            if ext == 'jpg':
+                ext = 'jpeg'  # Fix common media type mismatch
+            
+            return FileResponse(
+                path=abs_path,
+                media_type=f"image/{ext}",
+                filename=os.path.basename(abs_path)
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error serving original image: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

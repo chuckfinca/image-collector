@@ -1,92 +1,90 @@
 import React, { useEffect, useRef } from 'react';
 
-function ImageViewModal({ imageUrl, onClose }) {
+function ImageViewModal({ imageId, onClose }) {
   const windowRef = useRef(null);
-  const previousImageUrl = useRef(null);
-
+  
   useEffect(() => {
-    if (imageUrl && imageUrl !== previousImageUrl.current) {
+    if (imageId) {
+      // Close previous window if one exists
       if (windowRef.current) {
         windowRef.current.close();
       }
-
-      previousImageUrl.current = imageUrl;
-
+      
+      // Build the URL to the original image
+      const imageUrl = `/api/original/${imageId}`;
+      
+      // Create a simple HTML document to display the image
       const htmlContent = `
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Contact Info Image</title>
+            <title>Image Viewer</title>
             <style>
               html, body {
                 margin: 0;
                 padding: 0;
                 width: 100%;
                 height: 100%;
-                overflow: hidden;
-                background-color: var(--color-background, #242424);
+                background-color: #242424;
                 color-scheme: dark light;
               }
               
               @media (prefers-color-scheme: light) {
                 html, body {
-                  background-color: var(--color-background, #ffffff);
+                  background-color: #ffffff;
                 }
               }
               
               img {
+                position: absolute;
+                top: 0;
+                left: 0;
                 width: 100%;
                 height: 100%;
                 object-fit: contain;
               }
-              
-              :root {
-                --color-background: #242424;
-              }
-              
-              @media (prefers-color-scheme: light) {
-                :root {
-                  --color-background: #ffffff;
-                }
-              }
             </style>
           </head>
           <body>
-            <img src="${imageUrl.startsWith('data:') ? imageUrl : `data:image/jpeg;base64,${imageUrl}`}" 
-                 alt="Contact Info" />
+            <img src="${imageUrl}" alt="Original Image" />
           </body>
         </html>
       `;
-
+      
+      // Calculate window size based on screen
       const width = Math.min(1200, window.screen.availWidth * 0.8);
       const height = Math.min(800, window.screen.availHeight * 0.8);
       const left = (window.screen.availWidth - width) / 2;
       const top = (window.screen.availHeight - height) / 2;
-
+      
+      // Open the window
       windowRef.current = window.open(
         '',
-        'contactInfo',
+        'imageViewer',
         `width=${width},height=${height},left=${left},top=${top},resizable=yes`
       );
-
-      windowRef.current.document.write(htmlContent);
-      windowRef.current.document.close();
-
-      windowRef.current.onbeforeunload = () => {
-        previousImageUrl.current = null;
-        onClose();
-      };
+      
+      if (windowRef.current) {
+        windowRef.current.document.write(htmlContent);
+        windowRef.current.document.close();
+        
+        // Handle window being closed
+        windowRef.current.onbeforeunload = () => {
+          onClose();
+        };
+      }
     }
-
+    
+    // Cleanup function
     return () => {
-      if (windowRef.current && !imageUrl) {
+      if (windowRef.current && !imageId) {
         windowRef.current.close();
         windowRef.current = null;
-        previousImageUrl.current = null;
       }
     };
-  }, [imageUrl, onClose]);
-
+  }, [imageId, onClose]);
+  
+  // This component doesn't render anything
   return null;
 }
 
