@@ -1119,18 +1119,29 @@ class ImageDatabase:
         try:
             logger.info(f"Starting extraction for image_id: {image_id}")
             
-            # Get the image data and filename from the database
+            # Get the image file path from the database
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT image_data, filename FROM images WHERE id = ?", (image_id,))
+                cursor.execute("SELECT file_path, filename FROM images WHERE id = ?", (image_id,))
                 result = cursor.fetchone()
                 if not result:
                     logger.error(f"Image not found for id: {image_id}")
                     return {"success": False, "error": "Image not found"}
                 
-                image_data, filename = result
+                file_path, filename = result
                 logger.info(f"Found image with filename: {filename}")
                 
+                # Construct the absolute path to the image file
+                abs_path = os.path.join(self.image_dir, file_path)
+                
+                if not os.path.exists(abs_path):
+                    logger.error(f"Image file not found at path: {abs_path}")
+                    return {"success": False, "error": "Image file not found on disk"}
+                
+                # Read the file content
+                with open(abs_path, 'rb') as f:
+                    image_data = f.read()
+                    
             # Convert image data to base64
             base64_image = base64.b64encode(image_data).decode('utf-8')
             logger.info("Successfully converted image to base64")
