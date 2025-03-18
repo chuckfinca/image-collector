@@ -1354,16 +1354,24 @@ class ImageDatabase:
             return {"success": False, "error": f"Contact extraction failed: {str(e)}"}
       
     def delete_image(self, image_id: int) -> OperationResult:
-        """Delete an image and all associated data"""
+        """Delete an image and all associated data including the file on disk"""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
                 
-                # Verify image exists
-                cursor.execute("SELECT id FROM images WHERE id = ?", (image_id,))
-                if not cursor.fetchone():
+                # First, get the file path before deleting the image record
+                cursor.execute("SELECT file_path FROM images WHERE id = ?", (image_id,))
+                result = cursor.fetchone()
+                
+                if not result:
                     return OperationResult.not_found(f"Image ID {image_id} not found")
+                
+                file_path = result['file_path']
+                if file_path:
+                    # Construct the absolute path to the image file
+                    abs_path = os.path.join(self.image_dir, file_path)
+                    logger.info(f"Found image file to delete: {abs_path}")
                 
                 # Get all version IDs for this image
                 cursor.execute("SELECT id FROM image_versions WHERE image_id = ?", (image_id,))
@@ -1374,6 +1382,18 @@ class ImageDatabase:
                     self._delete_version_data(conn, version_id)
                 self._delete_image_data(conn, image_id)
                 
+                # Now delete the file from disk after database operations succeeded
+                if file_path and os.path.exists(abs_path):
+                    try:
+                        os.remove(abs_path)
+                        logger.info(f"Deleted image file: {abs_path}")
+                        
+                        # Optionally cleanup empty directories
+                        self._cleanup_empty_dirs(os.path.dirname(abs_path))
+                    except Exception as file_error:
+                        # Log but don't fail the operation if file deletion fails
+                        logger.warning(f"Failed to delete image file {abs_path}: {file_error}")
+                
                 logger.info(f"Deleted image {image_id} with {len(version_ids)} versions")
                 return OperationResult.success()
                     
@@ -1381,6 +1401,25 @@ class ImageDatabase:
             logger.error(f"Error deleting image: {e}", exc_info=True)
             return OperationResult.error("database_error", str(e))
 
+    def _cleanup_empty_dirs(self, directory_path):
+        """Helper method to remove empty directories after file deletion"""
+        try:
+            # Don't delete the base image directory
+            if directory_path == self.image_dir or not os.path.exists(directory_path):
+                return
+                
+            # Check if directory is empty
+            if not os.listdir(directory_path):
+                logger.info(f"Removing empty directory: {directory_path}")
+                os.rmdir(directory_path)
+                
+                # Recursively check parent directories
+                parent_dir = os.path.dirname(directory_path)
+                if parent_dir != self.image_dir:
+                    self._cleanup_empty_dirs(parent_dir)
+        except Exception as e:
+            logger.warning(f"Error cleaning up directory {directory_path}: {e}")
+        
     def delete_version(self, version_id: int) -> OperationResult:
         """Delete a version and all its data"""
         try:
