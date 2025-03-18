@@ -1352,7 +1352,7 @@ class ImageDatabase:
         except Exception as e:
             logger.error(f"Error extracting contact info: {e}", exc_info=True)
             return {"success": False, "error": f"Contact extraction failed: {str(e)}"}
-            
+      
     def delete_image(self, image_id: int) -> OperationResult:
         """Delete an image and all associated data"""
         try:
@@ -1428,9 +1428,13 @@ class ImageDatabase:
         cursor.execute("DELETE FROM version_postal_addresses WHERE version_id = ?", (version_id,))
         cursor.execute("DELETE FROM version_url_addresses WHERE version_id = ?", (version_id,))
         cursor.execute("DELETE FROM version_social_profiles WHERE version_id = ?", (version_id,))
+
         
         # Delete from version_data table
         cursor.execute("DELETE FROM version_data WHERE version_id = ?", (version_id,))
+        
+        # Delete from version_metadata table
+        cursor.execute("DELETE FROM version_metadata WHERE version_id = ?", (version_id,))
         
         # Finally delete the version itself
         cursor.execute("DELETE FROM image_versions WHERE id = ?", (version_id,))
