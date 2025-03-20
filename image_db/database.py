@@ -42,6 +42,7 @@ class ImageDatabase:
                     file_path TEXT NOT NULL,  
                     hash TEXT UNIQUE,         
                     date_added TIMESTAMP,
+                    source TEXT,
                     
                     -- Name Information
                     name_prefix TEXT,
@@ -214,7 +215,7 @@ class ImageDatabase:
                 )
             """)
         
-    async def save_image(self, image_data: bytes, metadata: dict = None) -> bool:
+    async def save_image(self, image_data: bytes, metadata: dict = None, source: str = "local") -> bool:
         """Save an image to disk and its metadata to the database."""
         if metadata is None:
             metadata = {}
@@ -265,15 +266,15 @@ class ImageDatabase:
                     
                     logger.info(f"Saved image to: {abs_path}")
                     
-                    # Store only the relative path in the database
+                    # Store only the relative path in the database - now including source
                     cursor.execute("""
                         INSERT INTO images (
-                            filename, file_path, hash, date_added,
+                            filename, file_path, hash, date_added, source,
                             name_prefix, given_name, middle_name, family_name, name_suffix,
                             job_title, department, organization_name
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        filename, rel_path, image_hash, datetime.now(),
+                        filename, rel_path, image_hash, datetime.now(), source,
                         metadata.get('name_prefix'), metadata.get('given_name'),
                         metadata.get('middle_name'), metadata.get('family_name'),
                         metadata.get('name_suffix'), metadata.get('job_title'),

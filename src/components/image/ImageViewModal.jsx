@@ -17,8 +17,8 @@ function ImageViewModal({ imageId, onClose }) {
             const dataUrl = `data:image/jpeg;base64,${response.image_data}`;
             setImageUrl(dataUrl);
             
-            // Open the window after we have the image
-            openImageWindow(dataUrl);
+            // Open the window after we have the image, passing the source
+            openImageWindow(dataUrl, response.source);
           } else {
             console.error('No image data returned from API');
           }
@@ -37,13 +37,16 @@ function ImageViewModal({ imageId, onClose }) {
         windowRef.current = null;
       }
     };
-  }, [imageId]);
+  }, [imageId, onClose]);
   
-  const openImageWindow = (imageUrl) => {
+  const openImageWindow = (imageUrl, source) => {
     // Close previous window if one exists
     if (windowRef.current) {
       windowRef.current.close();
     }
+    
+    // Format the source text
+    const sourceText = source === 'local' ? 'Local upload' : `URL: ${source}`;
     
     // Create a simple HTML document to display the image
     const htmlContent = `
@@ -75,10 +78,28 @@ function ImageViewModal({ imageId, onClose }) {
               height: 100%;
               object-fit: contain;
             }
+            
+            /* Simple source label */
+            .source-info {
+              position: absolute;
+              bottom: 10px;
+              left: 10px;
+              background: rgba(0,0,0,0.6);
+              color: white;
+              padding: 5px 8px;
+              border-radius: 4px;
+              font-family: system-ui, sans-serif;
+              font-size: 12px;
+              max-width: 90%;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
           </style>
         </head>
         <body>
           <img src="${imageUrl}" alt="Original Image" />
+          <div class="source-info">${sourceText}</div>
         </body>
       </html>
     `;
@@ -106,7 +127,7 @@ function ImageViewModal({ imageId, onClose }) {
       };
     }
   };
-  
+   
   // This component doesn't render anything
   return null;
 }

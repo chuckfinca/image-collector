@@ -238,14 +238,16 @@ async def get_full_image(image_id: int):
     try:
         with sqlite3.connect(image_db.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT file_path FROM images WHERE id = ?", (image_id,))
+            # Update query to include source field
+            cursor.execute("SELECT file_path, source FROM images WHERE id = ?", (image_id,))
             result = cursor.fetchone()
             
             if not result or not result[0]:
                 raise HTTPException(status_code=404, detail="Image not found")
             
-            # Get the file path relative to the image directory
+            # Get the file path and source
             rel_path = result[0]
+            source = result[1] if len(result) > 1 else "unknown"
             abs_path = os.path.join(image_db.image_dir, rel_path)
             
             if not os.path.exists(abs_path):
@@ -255,16 +257,16 @@ async def get_full_image(image_id: int):
             with open(abs_path, 'rb') as f:
                 image_data = f.read()
             
-            # Convert to base64
+            # Convert to base64 and include source in response
             image_base64 = base64.b64encode(image_data).decode('utf-8')
-            return {"image_data": image_base64}
+            return {"image_data": image_base64, "source": source}
             
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error serving full image: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-       
+
 @router.post("/upload/file")
 async def upload_image_file(file: UploadFile = File(...)):
     if not image_db:
@@ -302,9 +304,9 @@ async def upload_image_file(file: UploadFile = File(...)):
             logger.error(f"Invalid image format: {file.filename}, error: {img_error}")
             raise HTTPException(status_code=400, detail=f"Invalid image format: {str(img_error)}")
         
-        # Save to database
+        # Save to database, passing "local" as source
         logger.info(f"Saving image to database: {file.filename}")
-        success = await image_db.save_image(contents, metadata)
+        success = await image_db.save_image(contents, metadata, source="local")
         
         if success:
             logger.info(f"Successfully saved image: {file.filename}")
@@ -320,6 +322,7 @@ async def upload_image_file(file: UploadFile = File(...)):
         logger.error(f"Error uploading file: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
 
+# Update upload_image_url endpoint to pass URL as source
 @router.post("/upload/url")
 async def upload_image_url(url: str = Form(...)):
     if not image_db:
@@ -339,12 +342,12 @@ async def upload_image_url(url: str = Form(...)):
                 # Extract filename from URL
                 filename = url.split('/')[-1].split('?')[0] or "image.jpg"
                 
-                # Save to database
+                # Save to database, passing URL as source
                 metadata = {
                     'filename': filename
                 }
                 
-                success = await image_db.save_image(contents, metadata)
+                success = await image_db.save_image(contents, metadata, source=url)
                 
                 if success:
                     logger.info(f"Successfully saved image from URL: {url}")
@@ -356,7 +359,7 @@ async def upload_image_url(url: str = Form(...)):
     except Exception as e:
         logger.error(f"Error uploading from URL: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-    
+
 @router.post("/version/{image_id}")
 async def create_image_version(
     image_id: int, 
